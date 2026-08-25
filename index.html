@@ -1,0 +1,849 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson Copilot</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+:root{
+  color-scheme:light;
+  --bg: oklch(98% 0.006 80);
+  --surface: oklch(99% 0.003 80);
+  --surface-2: oklch(96% 0.007 80);
+  --border: oklch(90% 0.01 260);
+  --border-soft: oklch(93% 0.008 260);
+  --text: oklch(24% 0.02 260);
+  --text-2: oklch(46% 0.02 260);
+  --text-3: oklch(60% 0.015 260);
+  --accent: #3f8c80;
+  --accent-ink: oklch(32% 0.07 175);
+  --accent-tint: oklch(94% 0.03 175);
+  --accent-strong: oklch(46% 0.09 175);
+  --good: oklch(52% 0.13 145);
+  --good-tint: oklch(94% 0.035 145);
+  --bad: oklch(54% 0.16 25);
+  --bad-tint: oklch(94% 0.035 25);
+  --warn: oklch(58% 0.13 80);
+  --cat-grammar: oklch(52% 0.13 260); --cat-grammar-tint: oklch(94% 0.02 260);
+  --cat-vocab: oklch(52% 0.14 330);   --cat-vocab-tint: oklch(94% 0.025 330);
+  --cat-pron: oklch(55% 0.14 75);     --cat-pron-tint: oklch(94% 0.03 75);
+  --cat-usage: oklch(53% 0.15 20);    --cat-usage-tint: oklch(94% 0.03 20);
+  --type-vocabulary: var(--accent-strong); --type-vocabulary-tint: var(--accent-tint);
+  --type-phrasal: oklch(50% 0.13 255);   --type-phrasal-tint: oklch(94% 0.02 255);
+  --type-collocation: oklch(48% 0.13 300); --type-collocation-tint: oklch(94% 0.02 300);
+  --type-idiom: oklch(56% 0.13 70);      --type-idiom-tint: oklch(94% 0.03 70);
+  --type-metaphor: oklch(52% 0.15 10);   --type-metaphor-tint: oklch(94% 0.03 10);
+  --shadow-sm: 0 1px 2px oklch(20% 0.02 260 / 0.06);
+  --shadow-md: 0 4px 16px oklch(20% 0.02 260 / 0.07), 0 1px 3px oklch(20% 0.02 260 / 0.06);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg: oklch(21% 0.015 260); --surface: oklch(25% 0.015 260); --surface-2: oklch(28% 0.017 260);
+    --border: oklch(37% 0.02 260); --border-soft: oklch(32% 0.018 260);
+    --text: oklch(94% 0.006 80); --text-2: oklch(76% 0.012 260); --text-3: oklch(62% 0.012 260);
+    --accent: #5fb3a5; --accent-ink: oklch(90% 0.05 175); --accent-tint: oklch(32% 0.06 175); --accent-strong: oklch(74% 0.1 175);
+    --good: oklch(72% 0.14 145); --good-tint: oklch(32% 0.06 145);
+    --bad: oklch(72% 0.15 25); --bad-tint: oklch(34% 0.08 25);
+    --warn: oklch(76% 0.12 80);
+    --cat-grammar: oklch(76% 0.1 260); --cat-grammar-tint: oklch(30% 0.05 260);
+    --cat-vocab: oklch(76% 0.11 330); --cat-vocab-tint: oklch(30% 0.06 330);
+    --cat-pron: oklch(78% 0.11 75); --cat-pron-tint: oklch(32% 0.06 75);
+    --cat-usage: oklch(76% 0.12 20); --cat-usage-tint: oklch(32% 0.06 20);
+    --type-vocabulary: var(--accent-strong); --type-vocabulary-tint: var(--accent-tint);
+    --type-phrasal: oklch(76% 0.09 255); --type-phrasal-tint: oklch(30% 0.05 255);
+    --type-collocation: oklch(76% 0.1 300); --type-collocation-tint: oklch(30% 0.05 300);
+    --type-idiom: oklch(80% 0.11 70); --type-idiom-tint: oklch(32% 0.06 70);
+    --type-metaphor: oklch(76% 0.12 10); --type-metaphor-tint: oklch(32% 0.06 10);
+    --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.3); --shadow-md: 0 4px 16px oklch(0% 0 0 / 0.35);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg: oklch(21% 0.015 260); --surface: oklch(25% 0.015 260); --surface-2: oklch(28% 0.017 260);
+  --border: oklch(37% 0.02 260); --border-soft: oklch(32% 0.018 260);
+  --text: oklch(94% 0.006 80); --text-2: oklch(76% 0.012 260); --text-3: oklch(62% 0.012 260);
+  --accent: #5fb3a5; --accent-ink: oklch(90% 0.05 175); --accent-tint: oklch(32% 0.06 175); --accent-strong: oklch(74% 0.1 175);
+  --good: oklch(72% 0.14 145); --good-tint: oklch(32% 0.06 145);
+  --bad: oklch(72% 0.15 25); --bad-tint: oklch(34% 0.08 25);
+  --warn: oklch(76% 0.12 80);
+  --cat-grammar: oklch(76% 0.1 260); --cat-grammar-tint: oklch(30% 0.05 260);
+  --cat-vocab: oklch(76% 0.11 330); --cat-vocab-tint: oklch(30% 0.06 330);
+  --cat-pron: oklch(78% 0.11 75); --cat-pron-tint: oklch(32% 0.06 75);
+  --cat-usage: oklch(76% 0.12 20); --cat-usage-tint: oklch(32% 0.06 20);
+  --type-vocabulary: var(--accent-strong); --type-vocabulary-tint: var(--accent-tint);
+  --type-phrasal: oklch(76% 0.09 255); --type-phrasal-tint: oklch(30% 0.05 255);
+  --type-collocation: oklch(76% 0.1 300); --type-collocation-tint: oklch(30% 0.05 300);
+  --type-idiom: oklch(80% 0.11 70); --type-idiom-tint: oklch(32% 0.06 70);
+  --type-metaphor: oklch(76% 0.12 10); --type-metaphor-tint: oklch(32% 0.06 10);
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.3); --shadow-md: 0 4px 16px oklch(0% 0 0 / 0.35);
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:'IBM Plex Sans',system-ui,sans-serif;
+  font-size:14px; line-height:1.5;
+}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+button{font-family:inherit;font-size:inherit;cursor:pointer;background:none}
+input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+::selection{background:var(--accent-tint)}
+h1,h2,h3,h4{margin:0;text-wrap:balance}
+a{color:var(--accent-strong)}
+:focus-visible{outline:2px solid var(--accent-strong);outline-offset:2px;border-radius:4px}
+
+.shell{max-width:1180px;margin:0 auto;padding:22px 24px 64px}
+.topbar{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding-bottom:16px;margin-bottom:18px;border-bottom:1px solid var(--border-soft)}
+.brand{display:flex;align-items:center;gap:10px;margin-right:auto}
+.brand-mark{width:30px;height:30px;border-radius:9px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:white;font-size:14px;flex:0 0 auto}
+.brand-name{font-size:16px;font-weight:600;letter-spacing:-0.01em}
+.brand-tag{font-size:11.5px;color:var(--text-3)}
+
+.studentbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.studentchip{display:flex;align-items:center;gap:7px;padding:5px 10px 5px 5px;border-radius:100px;border:1px solid var(--border);background:var(--surface);transition:border-color .15s,box-shadow .15s}
+.studentchip.active{border-color:var(--accent-strong);box-shadow:0 0 0 1px var(--accent-strong) inset}
+.studentchip:hover{border-color:var(--text-3)}
+.avatar{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:white;flex:0 0 auto}
+.studentchip .name{font-size:12.5px;font-weight:500}
+.livepip{width:6px;height:6px;border-radius:50%;background:var(--bad);flex:0 0 auto;animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion: reduce){.livepip{animation:none}}
+
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:9px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px;font-weight:500;transition:border-color .15s,background .15s}
+.btn:hover{border-color:var(--text-3)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:white}
+.btn-primary:hover{opacity:.9;border-color:var(--accent)}
+.btn-danger{background:var(--bad);border-color:var(--bad);color:white}
+.btn-ghost{border-color:transparent;background:transparent;padding:8px 10px}
+.btn-ghost:hover{background:var(--surface-2)}
+.btn-sm{padding:5px 10px;font-size:12px;border-radius:7px}
+.btn[disabled]{opacity:.4;cursor:not-allowed}
+.icon{width:14px;height:14px;flex:0 0 auto}
+
+.tabs{display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid var(--border-soft)}
+.tab{padding:9px 4px;margin-right:22px;font-size:13.5px;font-weight:500;color:var(--text-3);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.active{color:var(--text);border-color:var(--accent)}
+
+.card{background:var(--surface);border:1px solid var(--border-soft);border-radius:14px;padding:18px 20px;box-shadow:var(--shadow-sm)}
+.grid2{display:grid;grid-template-columns:1.15fr 1fr;gap:18px;align-items:start}
+@media (max-width:860px){.grid2{grid-template-columns:1fr}}
+
+.eyebrow{font-size:10.5px;font-weight:600;letter-spacing:.07em;color:var(--text-3);text-transform:uppercase}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:11.5px;font-weight:600;color:var(--text-2)}
+.field input,.field select,.field textarea{padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)}
+.field input[type="range"]{padding:0;accent-color:var(--accent)}
+.field textarea{resize:vertical;min-height:52px}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent-strong)}
+.formrow{display:flex;gap:10px;flex-wrap:wrap}
+.formrow>.field{flex:1 1 140px}
+
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;letter-spacing:.02em;padding:3px 8px;border-radius:100px}
+.emptystate{text-align:center;padding:70px 20px;color:var(--text-2)}
+.emptystate h2{font-size:19px;margin-bottom:8px;color:var(--text)}
+.emptystate .btn{margin-top:16px}
+
+.mistakecard{border-radius:11px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;border:1px solid var(--border-soft);background:var(--surface)}
+.mistakecard.flagged{border-color:color-mix(in oklch, var(--warn) 45%, var(--border-soft))}
+.mistakecard .row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.mistakecard .txt{font-size:13px;line-height:1.5}
+.mistakecard .fix{font-size:12px;color:var(--text-2)}
+.count{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;padding:3px 7px;border-radius:100px;background:var(--warn);color:white;white-space:nowrap}
+.mini{font-size:11.5px;color:var(--text-3)}
+.quietlist{display:flex;flex-direction:column;gap:4px}
+.quietrow{display:flex;align-items:center;gap:8px;padding:6px 2px;font-size:12.5px;color:var(--text-2);border-bottom:1px dashed var(--border-soft)}
+.quietrow:last-child{border-bottom:none}
+.xbtn{margin-left:auto;color:var(--text-3);font-size:15px;line-height:1;flex:0 0 auto}
+.xbtn:hover{color:var(--bad)}
+
+.statrow{display:flex;gap:14px;flex-wrap:wrap}
+.stat{flex:1 1 120px;background:var(--surface-2);border-radius:11px;padding:12px 14px}
+.stat .num{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;line-height:1.1}
+.stat .lbl{font-size:11px;color:var(--text-2);margin-top:2px}
+.deltabadge{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:100px}
+.delta-up{background:var(--good-tint);color:var(--good)}
+.delta-down{background:var(--bad-tint);color:var(--bad)}
+.delta-flat{background:var(--surface-2);color:var(--text-2)}
+
+.glossgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.glosscard{border:1px solid var(--border-soft);border-radius:11px;padding:12px 13px;display:flex;flex-direction:column;gap:6px}
+.glosscard .term{font-size:14px;font-weight:600}
+.glosscard .meaning{font-size:12.5px;color:var(--text-2)}
+.glosscard .example{font-size:12px;color:var(--text-3);font-style:italic}
+
+.flash{display:flex;flex-direction:column;align-items:center;gap:16px;padding:30px 20px}
+.flashcard{width:100%;max-width:420px;min-height:190px;border-radius:16px;border:1px solid var(--border);background:var(--surface);box-shadow:var(--shadow-md);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center}
+.flashcard .term{font-size:22px;font-weight:700}
+.flashcard .reveal{display:flex;flex-direction:column;gap:8px}
+.flashcard .meaning{font-size:14px;color:var(--text-2)}
+.flashcard .example{font-size:13px;color:var(--text-3);font-style:italic}
+.flashcard .tap{font-size:11.5px;color:var(--text-3)}
+.flashctrl{display:flex;gap:8px;align-items:center}
+
+.timerbox{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:100px;background:var(--bad-tint)}
+.timerbox .dot{width:7px;height:7px;border-radius:50%;background:var(--bad);animation:pulse 1.6s ease-in-out infinite}
+.timerbox .t{font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:600;color:var(--bad)}
+
+.overlay{position:fixed;inset:0;background:oklch(15% 0.01 260 / 0.45);display:flex;align-items:center;justify-content:center;padding:20px;z-index:100}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px;width:100%;max-width:420px;box-shadow:var(--shadow-md);display:flex;flex-direction:column;gap:14px}
+.modal h3{font-size:16px}
+.modalrow{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);font-size:12.5px;font-weight:500;padding:9px 16px;border-radius:100px;box-shadow:var(--shadow-md);z-index:200}
+
+.sectionhead{display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;margin-bottom:12px}
+.sectionhead h3{font-size:14px}
+.help{font-size:12px;color:var(--text-3);line-height:1.55}
+.stack{display:flex;flex-direction:column;gap:14px}
+.divider{height:1px;background:var(--border-soft);margin:16px 0}
+table.sess{width:100%;border-collapse:collapse;font-size:12.5px}
+table.sess th{text-align:left;font-size:10.5px;letter-spacing:.05em;color:var(--text-3);font-weight:600;padding:0 8px 6px 8px;text-transform:uppercase}
+table.sess td{padding:7px 8px;border-top:1px solid var(--border-soft);vertical-align:top}
+table.sess td.notes{color:var(--text-2);max-width:280px}
+
+@media print{
+  body{background:white;color:black}
+  .no-print{display:none!important}
+  .shell{max-width:100%;padding:0 8px}
+  .card{box-shadow:none;border-color:#ccc}
+}
+</style>
+
+<div id="app"></div>
+<div id="toastHost"></div>
+
+<script>
+/* ---------- data ---------- */
+const STORE_KEY = 'lessoncopilot_v1';
+const COLORS = ['#3f8c80','#5b7fb5','#8a6fb0','#c98a4b','#b0555b','#5a9b6a','#a17f3f'];
+const CATS = {
+  grammar: {label:'Grammar', v:'--cat-grammar', t:'--cat-grammar-tint'},
+  vocab:   {label:'Word choice', v:'--cat-vocab', t:'--cat-vocab-tint'},
+  pron:    {label:'Pronunciation', v:'--cat-pron', t:'--cat-pron-tint'},
+  usage:   {label:'Usage', v:'--cat-usage', t:'--cat-usage-tint'}
+};
+const GTYPES = {
+  vocabulary:  {label:'Vocabulary', v:'--type-vocabulary', t:'--type-vocabulary-tint'},
+  phrasal:     {label:'Phrasal verb', v:'--type-phrasal', t:'--type-phrasal-tint'},
+  collocation: {label:'Collocation', v:'--type-collocation', t:'--type-collocation-tint'},
+  idiom:       {label:'Idiom', v:'--type-idiom', t:'--type-idiom-tint'},
+  metaphor:    {label:'Metaphor', v:'--type-metaphor', t:'--type-metaphor-tint'}
+};
+
+function uid(){ return Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4); }
+function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function norm(s){ return String(s||'').trim().toLowerCase().replace(/\s+/g,' '); }
+function clamp(n,a,b){ return Math.max(a,Math.min(b,n)); }
+function avg(arr){ return arr.reduce((a,b)=>a+b,0)/arr.length; }
+function fmtDate(ts){ return new Date(ts).toLocaleDateString(undefined,{month:'short',day:'numeric'}); }
+function fmtDateFull(ts){ return new Date(ts).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}); }
+function colorFor(name){ let h=0; for(const c of name) h=(h*31+c.charCodeAt(0))>>>0; return COLORS[h%COLORS.length]; }
+function initials(name){ return name.trim().split(/\s+/).slice(0,2).map(w=>w[0]?.toUpperCase()||'').join('') || '?'; }
+
+function load(){
+  try{ const raw = localStorage.getItem(STORE_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+  return { students: [], activeStudentId: null, liveSession: null };
+}
+function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+
+let state = load();
+let view = 'session'; // 'session' | 'file'
+let showFullLog = false;
+let practice = { active:false, idx:0, order:[], revealed:false, typeFilter:'all' };
+let timerHandle = null;
+let pendingEnd = false;
+
+function activeStudent(){ return state.students.find(s=>s.id===state.activeStudentId) || null; }
+
+function toast(msg){
+  const host = document.getElementById('toastHost');
+  host.innerHTML = '<div class="toast">'+esc(msg)+'</div>';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>{ host.innerHTML=''; }, 2600);
+}
+
+/* ---------- student mgmt ---------- */
+function openAddStudent(){
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Add a student</h3>
+      <div class="field"><label>Name</label><input id="nsName" placeholder="e.g. Elena Kowalski" autofocus></div>
+      <div class="formrow">
+        <div class="field"><label>Language</label><input id="nsLang" list="langList" placeholder="Spanish"></div>
+        <div class="field"><label>Level</label>
+          <select id="nsLevel">
+            <option>A1</option><option>A2</option><option selected>B1</option><option>B2</option><option>C1</option><option>C2</option>
+          </select>
+        </div>
+      </div>
+      <datalist id="langList">
+        <option>English</option><option>Spanish</option><option>French</option><option>German</option>
+        <option>Italian</option><option>Portuguese</option><option>Mandarin</option><option>Japanese</option>
+        <option>Korean</option><option>Russian</option><option>Arabic</option>
+      </datalist>
+      <div class="modalrow">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmAddStudent()">Add student</button>
+      </div>
+    </div>`;
+  overlay.id = 'modalHost';
+  document.body.appendChild(overlay);
+  document.getElementById('nsName').focus();
+}
+function closeModal(){ document.getElementById('modalHost')?.remove(); }
+function confirmAddStudent(){
+  const name = document.getElementById('nsName').value.trim();
+  if(!name){ toast('Give the student a name first'); return; }
+  const lang = document.getElementById('nsLang').value.trim() || 'General';
+  const level = document.getElementById('nsLevel').value;
+  const st = { id:uid(), name, lang, level, color:colorFor(name), createdAt:Date.now(), sessions:[], mistakes:[], glossary:[] };
+  state.students.push(st);
+  state.activeStudentId = st.id;
+  closeModal(); save(); view='session'; render();
+  toast('Added '+name);
+}
+function selectStudent(id){ state.activeStudentId = id; save(); showFullLog=false; practice.active=false; render(); }
+function deleteStudent(id){
+  const s = state.students.find(x=>x.id===id); if(!s) return;
+  if(!confirm(`Delete ${s.name}'s entire file? This removes their mistake history and glossary permanently and can't be undone.`)) return;
+  if(state.liveSession && state.liveSession.studentId===id) state.liveSession=null;
+  state.students = state.students.filter(x=>x.id!==id);
+  if(state.activeStudentId===id) state.activeStudentId = state.students[0]?.id || null;
+  save(); render();
+}
+
+/* ---------- live session ---------- */
+function startSession(){
+  const st = activeStudent(); if(!st) return;
+  if(state.liveSession && state.liveSession.studentId!==st.id){ toast('Finish the session in progress for the other student first'); return; }
+  state.liveSession = { studentId: st.id, sessionId: uid(), startedAt: Date.now() };
+  save(); render();
+}
+function liveMistakeFor(st){ return state.liveSession && state.liveSession.studentId===st.id ? state.liveSession : null; }
+
+function logMistake(){
+  const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
+  const text = document.getElementById('mText').value.trim();
+  if(!text){ toast('Add what was said first'); return; }
+  const correction = document.getElementById('mFix').value.trim();
+  const category = document.getElementById('mCat').value;
+  const key = category+'|'+norm(text);
+  let m = st.mistakes.find(x=> (x.category+'|'+norm(x.text))===key );
+  if(m){
+    if(correction && !m.correction) m.correction = correction;
+    m.occurrences.push({sessionId: live.sessionId, date: Date.now()});
+  } else {
+    m = { id:uid(), category, text, correction, occurrences:[{sessionId: live.sessionId, date: Date.now()}] };
+    st.mistakes.push(m);
+  }
+  save(); render();
+}
+function removeMistake(id){
+  const st = activeStudent(); if(!st) return;
+  st.mistakes = st.mistakes.filter(m=>m.id!==id);
+  save(); render();
+}
+function logGlossary(){
+  const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
+  const term = document.getElementById('gTerm').value.trim();
+  if(!term){ toast('Add the term first'); return; }
+  const type = document.getElementById('gType').value;
+  const meaning = document.getElementById('gMean').value.trim();
+  const example = document.getElementById('gEx').value.trim();
+  const key = type+'|'+norm(term);
+  let g = st.glossary.find(x=> (x.type+'|'+norm(x.term))===key );
+  if(g){
+    if(meaning) g.meaning = meaning;
+    if(example) g.example = example;
+    g.occurrences.push({sessionId: live.sessionId, date: Date.now()});
+  } else {
+    g = { id:uid(), type, term, meaning, example, occurrences:[{sessionId: live.sessionId, date: Date.now()}] };
+    st.glossary.push(g);
+  }
+  save(); render();
+}
+function removeGlossary(id){
+  const st = activeStudent(); if(!st) return;
+  st.glossary = st.glossary.filter(g=>g.id!==id);
+  save(); render();
+}
+
+function sessionStats(st, sessionId){
+  const flagged = st.mistakes.filter(m => m.occurrences.some(o=>o.sessionId===sessionId) && m.occurrences.length>1);
+  const firstTime = st.mistakes.filter(m => m.occurrences.some(o=>o.sessionId===sessionId) && m.occurrences.length===1);
+  const vocab = st.glossary.filter(g => g.occurrences.some(o=>o.sessionId===sessionId));
+  return { flagged, firstTime, vocab };
+}
+function autoScore(st, sessionId){
+  const {flagged, firstTime, vocab} = sessionStats(st, sessionId);
+  return clamp(Math.round(100 - flagged.length*9 - firstTime.length*2 + Math.min(vocab.length,5)), 0, 100);
+}
+
+function openEndSession(){
+  const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
+  const score = autoScore(st, live.sessionId);
+  const overlay = document.createElement('div');
+  overlay.className='overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Finish session with ${esc(st.name)}</h3>
+      <div class="field">
+        <label>Performance this session <span id="scoreOut" class="mono">${score}%</span></label>
+        <input type="range" min="0" max="100" value="${score}" id="scoreRange"
+          oninput="document.getElementById('scoreOut').textContent=this.value+'%'">
+      </div>
+      <div class="field"><label>Session notes (optional)</label>
+        <textarea id="sessNotes" placeholder="Focus for next time, homework given, wins to mention..."></textarea>
+      </div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeModal()">Keep going</button>
+        <button class="btn btn-primary" onclick="confirmEndSession()">Save session</button>
+      </div>
+    </div>`;
+  overlay.id='modalHost';
+  document.body.appendChild(overlay);
+}
+function confirmEndSession(){
+  const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
+  const rating = Number(document.getElementById('scoreRange').value);
+  const notes = document.getElementById('sessNotes').value.trim();
+  const {flagged, firstTime, vocab} = sessionStats(st, live.sessionId);
+  st.sessions.push({
+    id: live.sessionId, date: live.startedAt,
+    durationMin: Math.max(1, Math.round((Date.now()-live.startedAt)/60000)),
+    rating, notes, mistakeCount: flagged.length+firstTime.length, recurringCount: flagged.length, vocabCount: vocab.length
+  });
+  state.liveSession = null;
+  closeModal(); save(); view='file'; render();
+  toast('Session saved to '+st.name+"'s file");
+}
+function discardSession(){
+  if(!confirm('Discard this session? Mistakes and vocabulary already logged will stay in the file, but no session record or score will be saved.')) return;
+  state.liveSession = null; save(); render();
+}
+
+/* ---------- timer ---------- */
+function tickTimer(){
+  const el = document.getElementById('timerDisplay');
+  if(!el || !state.liveSession) return;
+  const sec = Math.floor((Date.now()-state.liveSession.startedAt)/1000);
+  const m = String(Math.floor(sec/60)).padStart(2,'0'), s = String(sec%60).padStart(2,'0');
+  el.textContent = m+':'+s;
+}
+
+/* ---------- progression math ---------- */
+function progression(st){
+  const ratings = st.sessions.map(s=>s.rating);
+  const cum = ratings.map((_,i)=> avg(ratings.slice(0,i+1)));
+  const n = ratings.length;
+  const prevAvg = n>=2 ? avg(ratings.slice(0,n-1)) : null;
+  const delta = (n>=2) ? Math.round(ratings[n-1]-prevAvg) : null;
+  return { ratings, cum, current: n? Math.round(cum[n-1]) : null, delta };
+}
+
+/* ---------- charts ---------- */
+function chartSVG(st){
+  const { ratings, cum } = progression(st);
+  const n = ratings.length;
+  if(n===0) return '<div class="help" style="padding:30px 0;text-align:center">No sessions yet — the progression chart fills in after your first saved session.</div>';
+  const W=640,H=170,padL=30,padR=10,padT=10,padB=22;
+  const xStep = n>1 ? (W-padL-padR)/(n-1) : 0;
+  const xFor = i => padL + i*xStep;
+  const yFor = v => padT + (100-v)/100*(H-padT-padB);
+  const linePts = ratings.map((v,i)=> xFor(i)+','+yFor(v)).join(' ');
+  const cumPts = cum.map((v,i)=> xFor(i)+','+yFor(v)).join(' ');
+  const areaPts = cumPts + ' ' + xFor(n-1)+','+(H-padB) + ' ' + xFor(0)+','+(H-padB);
+  let grid = '';
+  [0,25,50,75,100].forEach(v=>{
+    const y = yFor(v);
+    grid += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="var(--border-soft)" stroke-width="1"/>`;
+    grid += `<text x="${padL-6}" y="${y+3}" text-anchor="end" font-size="9" fill="var(--text-3)" font-family="IBM Plex Mono, monospace">${v}</text>`;
+  });
+  const dots = ratings.map((v,i)=> `<circle cx="${xFor(i)}" cy="${yFor(v)}" r="${i===n-1?4:2.5}" fill="var(--accent)"/>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H+16}" width="100%" style="overflow:visible">
+    ${grid}
+    <polygon points="${areaPts}" fill="var(--accent-tint)" opacity="0.7"/>
+    <polyline points="${cumPts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
+    <polyline points="${linePts}" fill="none" stroke="var(--text-3)" stroke-width="1.3" stroke-dasharray="2 3"/>
+    ${dots}
+    <text x="${padL}" y="${H+13}" font-size="9.5" fill="var(--text-3)">${esc(fmtDate(st.sessions[0].date))}</text>
+    <text x="${W-padR}" y="${H+13}" text-anchor="end" font-size="9.5" fill="var(--text-3)">${esc(fmtDate(st.sessions[n-1].date))}</text>
+  </svg>`;
+}
+
+/* ---------- render: header ---------- */
+function renderHeader(){
+  const chips = state.students.map(s=>{
+    const live = state.liveSession && state.liveSession.studentId===s.id;
+    return `<button class="studentchip ${s.id===state.activeStudentId?'active':''}" onclick="selectStudent('${s.id}')">
+      <span class="avatar" style="background:${s.color}">${esc(initials(s.name))}</span>
+      <span class="name">${esc(s.name)}</span>
+      ${live?'<span class="livepip"></span>':''}
+    </button>`;
+  }).join('');
+  return `
+  <div class="topbar no-print">
+    <div class="brand">
+      <div class="brand-mark">🗣️</div>
+      <div><div class="brand-name">Lesson Copilot</div><div class="brand-tag">Runs beside any call · nothing leaves your browser</div></div>
+    </div>
+    <div class="studentbar">
+      ${chips}
+      <button class="btn btn-sm" onclick="openAddStudent()">+ Student</button>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('importFile').click()" title="Import a student file">Import</button>
+      <input type="file" id="importFile" accept="application/json" style="display:none" onchange="handleImport(this.files[0])">
+      <button class="btn btn-ghost btn-sm" onclick="exportAll()" title="Back up everything">Backup all</button>
+    </div>
+  </div>`;
+}
+
+/* ---------- render: session view ---------- */
+function renderSession(st){
+  const live = liveMistakeFor(st);
+  const otherLive = state.liveSession && state.liveSession.studentId!==st.id;
+
+  if(!live){
+    return `
+    <div class="card" style="text-align:center;padding:34px 20px">
+      <div class="eyebrow">Ready when you are</div>
+      <h2 style="font-size:18px;margin:8px 0 6px">Start a session with ${esc(st.name)}</h2>
+      <p class="help" style="max-width:440px;margin:0 auto 14px">Log mistakes and new vocabulary as they come up on the call. Nothing is flagged to you as a pattern until it repeats — first-time slips stay quiet in the log.</p>
+      <button class="btn btn-primary" ${otherLive?'disabled':''} onclick="startSession()">Start session</button>
+      ${otherLive?'<div class="mini" style="margin-top:8px">Finish the session already running for another student first.</div>':''}
+      ${st.sessions.length ? `<div class="mini" style="margin-top:14px">${st.sessions.length} session${st.sessions.length>1?'s':''} recorded so far &middot; last on ${esc(fmtDateFull(st.sessions[st.sessions.length-1].date))}</div>` : ''}
+    </div>`;
+  }
+
+  const flagged = st.mistakes.filter(m => m.occurrences.some(o=>o.sessionId===live.sessionId) && m.occurrences.length>1)
+    .sort((a,b)=> b.occurrences.length-a.occurrences.length);
+  const quiet = st.mistakes.filter(m => m.occurrences.some(o=>o.sessionId===live.sessionId) && m.occurrences.length===1);
+  const vocabToday = st.glossary.filter(g => g.occurrences.some(o=>o.sessionId===live.sessionId));
+
+  return `
+  <div class="grid2">
+    <div class="stack">
+      <div class="card">
+        <div class="sectionhead">
+          <h3>Log a mistake</h3>
+          <div class="timerbox"><span class="dot"></span><span class="t mono" id="timerDisplay">00:00</span></div>
+        </div>
+        <div class="stack" style="gap:10px">
+          <div class="formrow">
+            <div class="field" style="flex:2 1 220px"><label>What they said</label><input id="mText" placeholder="e.g. soy cansada"></div>
+            <div class="field" style="flex:2 1 220px"><label>Correction (optional)</label><input id="mFix" placeholder="estoy cansada"></div>
+            <div class="field" style="flex:1 1 140px"><label>Category</label>
+              <select id="mCat">${Object.entries(CATS).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join('')}</select>
+            </div>
+          </div>
+          <div><button class="btn btn-primary btn-sm" onclick="logMistake()">Log mistake</button></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="sectionhead"><h3>Add vocabulary or a construct</h3></div>
+        <div class="stack" style="gap:10px">
+          <div class="formrow">
+            <div class="field" style="flex:1 1 160px"><label>Term</label><input id="gTerm" placeholder="e.g. break the ice"></div>
+            <div class="field" style="flex:1 1 130px"><label>Type</label>
+              <select id="gType">${Object.entries(GTYPES).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join('')}</select>
+            </div>
+          </div>
+          <div class="formrow">
+            <div class="field"><label>Meaning</label><input id="gMean" placeholder="to ease tension in a social setting"></div>
+            <div class="field"><label>Example (optional)</label><input id="gEx" placeholder="She told a joke to break the ice."></div>
+          </div>
+          <div><button class="btn btn-primary btn-sm" onclick="logGlossary()">Add to glossary</button></div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="openEndSession()">End session &amp; save</button>
+        <button class="btn btn-ghost" onclick="discardSession()">Discard</button>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <div class="sectionhead">
+          <h3>Patterns this session</h3>
+          <span class="mini mono">${flagged.length}</span>
+        </div>
+        ${flagged.length ? `<div class="stack" style="gap:8px">${flagged.map(m=>{
+          const c = CATS[m.category];
+          return `<div class="mistakecard flagged">
+            <div class="row">
+              <span class="pill" style="background:var(${c.t});color:var(${c.v})">${c.label}</span>
+              <span class="count">×${m.occurrences.length}</span>
+            </div>
+            <div class="txt">${esc(m.text)}</div>
+            ${m.correction?`<div class="fix">→ ${esc(m.correction)}</div>`:''}
+          </div>`;
+        }).join('')}</div>` : `<div class="help">Nothing flagged yet — a mistake shows up here only once it repeats.</div>`}
+
+        ${quiet.length ? `
+        <div class="divider"></div>
+        <div class="eyebrow" style="margin-bottom:8px">Logged once so far</div>
+        <div class="quietlist">${quiet.map(m=>`
+          <div class="quietrow">
+            <span>${esc(m.text)}</span>
+            <button class="xbtn" onclick="removeMistake('${m.id}')" title="Remove">×</button>
+          </div>`).join('')}</div>` : ''}
+      </div>
+
+      ${vocabToday.length ? `
+      <div class="card">
+        <div class="sectionhead"><h3>Added this session</h3><span class="mini mono">${vocabToday.length}</span></div>
+        <div class="stack" style="gap:6px">${vocabToday.map(g=>{
+          const t = GTYPES[g.type];
+          return `<div class="quietrow">
+            <span class="pill" style="background:var(${t.t});color:var(${t.v})">${t.label}</span>
+            <span>${esc(g.term)}</span>
+            <button class="xbtn" onclick="removeGlossary('${g.id}')" title="Remove">×</button>
+          </div>`;
+        }).join('')}</div>
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+
+/* ---------- render: file view ---------- */
+function renderFile(st){
+  const prog = progression(st);
+  const deltaBadge = prog.delta===null ? `<span class="mini">First session — nothing to compare yet</span>` :
+    prog.delta>0 ? `<span class="deltabadge delta-up">▲ +${prog.delta}% vs recent average</span>` :
+    prog.delta<0 ? `<span class="deltabadge delta-down">▼ ${prog.delta}% vs recent average</span>` :
+    `<span class="deltabadge delta-flat">steady</span>`;
+
+  const needsAttention = st.mistakes.filter(m=>m.occurrences.length>1).sort((a,b)=>b.occurrences.length-a.occurrences.length);
+  const singles = st.mistakes.filter(m=>m.occurrences.length===1);
+
+  const groups = {};
+  Object.keys(GTYPES).forEach(k=>groups[k]=[]);
+  st.glossary.forEach(g=>groups[g.type]?.push(g));
+
+  return `
+  <div class="stack">
+    <div class="card">
+      <div class="sectionhead">
+        <div>
+          <h3 style="font-size:16px">${esc(st.name)}'s progression</h3>
+          <div class="mini">${esc(st.lang)} &middot; ${esc(st.level)} &middot; ${st.sessions.length} session${st.sessions.length===1?'':'s'} logged</div>
+        </div>
+        <div class="no-print" style="display:flex;flex-wrap:wrap;gap:8px">
+          <button class="btn btn-sm" onclick="window.print()">Save as PDF</button>
+          <button class="btn btn-sm" onclick="exportStudent('${st.id}')">Export file (.json)</button>
+          <button class="btn btn-ghost btn-sm" onclick="deleteStudent('${st.id}')">Delete student</button>
+        </div>
+      </div>
+      <div class="statrow" style="margin-bottom:14px">
+        <div class="stat"><div class="num">${prog.current===null?'—':prog.current+'%'}</div><div class="lbl">Current average</div></div>
+        <div class="stat"><div class="num">${needsAttention.length}</div><div class="lbl">Recurring mistakes</div></div>
+        <div class="stat"><div class="num">${st.glossary.length}</div><div class="lbl">Terms in glossary</div></div>
+        <div class="stat" style="display:flex;align-items:center">${deltaBadge}</div>
+      </div>
+      <div class="chart-wrap">${chartSVG(st)}</div>
+      ${st.sessions.length ? `
+      <div class="divider"></div>
+      <div class="eyebrow" style="margin-bottom:8px">Session history</div>
+      <div style="overflow-x:auto">
+      <table class="sess"><thead><tr><th>Date</th><th>Duration</th><th>Score</th><th>Notes</th></tr></thead><tbody>
+        ${st.sessions.slice().reverse().map(s=>`<tr>
+          <td class="mono">${esc(fmtDateFull(s.date))}</td>
+          <td class="mono">${s.durationMin}m</td>
+          <td class="mono">${s.rating}%</td>
+          <td class="notes">${esc(s.notes)||'—'}</td>
+        </tr>`).join('')}
+      </tbody></table>
+      </div>` : ''}
+    </div>
+
+    <div class="card">
+      <div class="sectionhead"><h3>Needs attention</h3><span class="mini mono">${needsAttention.length}</span></div>
+      ${needsAttention.length ? `<div class="stack" style="gap:8px">${needsAttention.map(m=>{
+        const c = CATS[m.category];
+        const last = m.occurrences[m.occurrences.length-1];
+        return `<div class="mistakecard flagged">
+          <div class="row">
+            <span class="pill" style="background:var(${c.t});color:var(${c.v})">${c.label}</span>
+            <span class="count">×${m.occurrences.length}</span>
+          </div>
+          <div class="txt">${esc(m.text)}</div>
+          ${m.correction?`<div class="fix">→ ${esc(m.correction)}</div>`:''}
+          <div class="mini">last seen ${esc(fmtDate(last.date))}</div>
+        </div>`;
+      }).join('')}</div>` : `<div class="help">No repeat mistakes yet — recurring patterns will collect here as sessions add up.</div>`}
+      ${singles.length ? `<div style="margin-top:12px">
+        <button class="btn btn-ghost btn-sm no-print" onclick="showFullLog=!showFullLog;render()">${showFullLog?'Hide':'Show'} ${singles.length} one-off mistake${singles.length===1?'':'s'}</button>
+        ${showFullLog ? `<div class="quietlist" style="margin-top:8px">${singles.map(m=>`
+          <div class="quietrow"><span>${esc(m.text)}</span>${m.correction?`<span class="mini">→ ${esc(m.correction)}</span>`:''}</div>`).join('')}</div>` : ''}
+      </div>` : ''}
+    </div>
+
+    <div class="card">
+      <div class="sectionhead">
+        <h3>Vocabulary &amp; constructs</h3>
+        <button class="btn btn-sm no-print" ${st.glossary.length?'':'disabled'} onclick="startPractice('${st.id}')">Practice flashcards</button>
+      </div>
+      ${st.glossary.length ? Object.entries(GTYPES).map(([k,meta])=>{
+        const items = groups[k]; if(!items.length) return '';
+        return `<div style="margin-bottom:14px">
+          <div class="eyebrow" style="margin-bottom:8px;color:var(${meta.v})">${meta.label} &middot; ${items.length}</div>
+          <div class="glossgrid">${items.map(g=>`
+            <div class="glosscard">
+              <div class="row"><span class="term">${esc(g.term)}</span><span class="mini mono no-print">×${g.occurrences.length}</span></div>
+              ${g.meaning?`<div class="meaning">${esc(g.meaning)}</div>`:''}
+              ${g.example?`<div class="example">"${esc(g.example)}"</div>`:''}
+            </div>`).join('')}
+          </div>
+        </div>`;
+      }).join('') : `<div class="help">Nothing taught yet — vocabulary and constructs you add during sessions collect here, grouped by type.</div>`}
+    </div>
+
+    <div class="card no-print">
+      <div class="sectionhead"><h3>Share with ${esc(st.name)}</h3></div>
+      <p class="help">This tool works fully in the browser and keeps everything local to whoever has it open — nothing syncs automatically. To hand ${esc(st.name)} their own copy: click <strong>Export file</strong> above to download their record, then send them that file along with this page's link. They open the link and use <strong>Import</strong> in the top bar to load it — they'll see their own progression, mistake list and glossary, and can run flashcard practice on their own, with no access to any other student's data.</p>
+    </div>
+  </div>`;
+}
+
+/* ---------- flashcards ---------- */
+function startPractice(id){
+  const st = state.students.find(s=>s.id===id); if(!st || !st.glossary.length) return;
+  practice = { active:true, idx:0, order: shuffled(st.glossary.map(g=>g.id)), revealed:false, typeFilter:'all' };
+  render();
+}
+function shuffled(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+function practiceItems(st){
+  return practice.typeFilter==='all' ? st.glossary : st.glossary.filter(g=>g.type===practice.typeFilter);
+}
+function renderPractice(st){
+  const items = practice.order.map(id=>st.glossary.find(g=>g.id===id)).filter(g=>g && (practice.typeFilter==='all'||g.type===practice.typeFilter));
+  if(!items.length){ practice.active=false; return renderFile(st); }
+  if(practice.idx>=items.length) practice.idx=0;
+  const g = items[practice.idx];
+  const meta = GTYPES[g.type];
+  return `
+  <div class="card">
+    <div class="sectionhead">
+      <h3>Practice: ${esc(st.name)}'s glossary</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select onchange="practice.typeFilter=this.value;practice.idx=0;practice.revealed=false;render()">
+          <option value="all" ${practice.typeFilter==='all'?'selected':''}>All types</option>
+          ${Object.entries(GTYPES).map(([k,v])=>`<option value="${k}" ${practice.typeFilter===k?'selected':''}>${v.label}</option>`).join('')}
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="practice.active=false;render()">Back to file</button>
+      </div>
+    </div>
+    <div class="flash">
+      <div class="mini">${practice.idx+1} of ${items.length}</div>
+      <div class="flashcard" onclick="practice.revealed=!practice.revealed;render()">
+        <span class="pill" style="background:var(${meta.t});color:var(${meta.v})">${meta.label}</span>
+        <div class="term">${esc(g.term)}</div>
+        ${practice.revealed ? `<div class="reveal">
+            ${g.meaning?`<div class="meaning">${esc(g.meaning)}</div>`:''}
+            ${g.example?`<div class="example">"${esc(g.example)}"</div>`:''}
+          </div>` : `<div class="tap">tap to reveal</div>`}
+      </div>
+      <div class="flashctrl">
+        <button class="btn btn-sm" onclick="practice.idx=(practice.idx-1+${items.length})%${items.length};practice.revealed=false;render()">Prev</button>
+        <button class="btn btn-sm" onclick="practice.order=shuffled(practice.order);practice.idx=0;practice.revealed=false;render()">Shuffle</button>
+        <button class="btn btn-sm btn-primary" onclick="practice.idx=(practice.idx+1)%${items.length};practice.revealed=false;render()">Next</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------- import / export ---------- */
+function exportStudent(id){
+  const st = state.students.find(s=>s.id===id); if(!st) return;
+  const data = JSON.stringify({ kind:'lesson-copilot-student', exportedAt: Date.now(), student: st }, null, 2);
+  const filename = st.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'')+'-lesson-file.json';
+  if(window.claude?.downloads){
+    window.claude.downloads.save({ filename, data })
+      .then(()=>toast('Saved '+filename))
+      .catch(err=>toast(err?.code==='declined' ? 'Export cancelled' : 'Could not save the file'));
+  } else {
+    toast('Downloads are not available in this view');
+  }
+}
+function exportAll(){
+  const data = JSON.stringify({ kind:'lesson-copilot-backup', exportedAt: Date.now(), state }, null, 2);
+  if(window.claude?.downloads){
+    window.claude.downloads.save({ filename:'lesson-copilot-backup.json', data })
+      .then(()=>toast('Backup saved'))
+      .catch(err=>toast(err?.code==='declined' ? 'Backup cancelled' : 'Could not save the backup'));
+  } else {
+    toast('Downloads are not available in this view');
+  }
+}
+function handleImport(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let data;
+    try{ data = JSON.parse(reader.result); }catch(e){ toast('That file is not valid JSON'); return; }
+    let incoming = [];
+    if(data.kind==='lesson-copilot-student' && data.student) incoming = [data.student];
+    else if(data.kind==='lesson-copilot-backup' && data.state?.students) incoming = data.state.students;
+    else if(data.student) incoming = [data.student];
+    else if(Array.isArray(data.students)) incoming = data.students;
+    else if(data.id && Array.isArray(data.sessions)) incoming = [data];
+    if(!incoming.length){ toast("Couldn't find a student record in that file"); return; }
+    incoming.forEach(s=>{
+      const copy = JSON.parse(JSON.stringify(s));
+      copy.id = uid();
+      copy.color = copy.color || colorFor(copy.name||'?');
+      state.students.push(copy);
+      state.activeStudentId = copy.id;
+    });
+    save(); view='file'; render();
+    toast(incoming.length>1 ? `Imported ${incoming.length} students` : `Imported ${incoming[0].name}`);
+  };
+  reader.readAsText(file);
+  document.getElementById('importFile').value='';
+}
+
+/* ---------- main render ---------- */
+function render(){
+  clearInterval(timerHandle); timerHandle=null;
+  const st = activeStudent();
+  const app = document.getElementById('app');
+
+  if(!st){
+    app.innerHTML = renderHeader() + `
+    <div class="shell" style="padding-top:0">
+      <div class="emptystate">
+        <h2>Set up your first student</h2>
+        <p>Lesson Copilot sits beside your call. Log mistakes and new vocabulary as they happen — it only flags a mistake once it repeats — and it keeps a running file per student with their progression and glossary.</p>
+        <button class="btn btn-primary" onclick="openAddStudent()">Add a student</button>
+      </div>
+    </div>`;
+    return;
+  }
+
+  const live = liveMistakeFor(st);
+  const body = practice.active ? renderPractice(st) :
+    view==='session' ? renderSession(st) : renderFile(st);
+
+  document.getElementById('app').innerHTML = renderHeader() + `
+    <div class="shell" style="padding-top:0">
+      <div class="tabs no-print">
+        <button class="tab ${view==='session'?'active':''}" onclick="practice.active=false;view='session';render()">Live session ${live?'<span class=\"livepip\"></span>':''}</button>
+        <button class="tab ${view==='file'?'active':''}" onclick="practice.active=false;view='file';render()">Student file</button>
+      </div>
+      ${body}
+    </div>`;
+
+  if(live && view==='session' && !practice.active){
+    tickTimer();
+    timerHandle = setInterval(tickTimer, 1000);
+  }
+}
+
+if(state.students.length && !state.activeStudentId) state.activeStudentId = state.students[0].id;
+if(state.students.length===0) view='session';
+render();
+</script>
