@@ -283,6 +283,15 @@ function load(){
 }
 function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
 
+const STUDENT_MODE = new URLSearchParams(location.search).get('student') === '1';
+const STUDENT_STORE_KEY = 'lessoncopilot_student_v1';
+function loadStudentState(){
+  try{ const raw = localStorage.getItem(STUDENT_STORE_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+  return { student: null };
+}
+function saveStudentState(){ localStorage.setItem(STUDENT_STORE_KEY, JSON.stringify(studentState)); }
+let studentState = loadStudentState();
+
 let state = load();
 let view = 'session'; // 'session' | 'file'
 let showFullLog = false;
@@ -1004,8 +1013,11 @@ function renderFile(st){
     </div>
 
     <div class="card no-print">
-      <div class="sectionhead"><h3>Share with ${esc(st.name)}</h3></div>
-      <p class="help">This tool works fully in the browser and keeps everything local to whoever has it open — nothing syncs automatically. To hand ${esc(st.name)} their own copy: click <strong>Export file</strong> above to download their record, then send them that file along with this page's link. They open the link and use <strong>Import</strong> in the top bar to load it — they'll see their own progression, mistake list and glossary, and can run flashcard practice on their own, with no access to any other student's data.</p>
+      <div class="sectionhead">
+        <h3>Share with ${esc(st.name)}</h3>
+        <button class="btn btn-sm" onclick="copyStudentLink()">Copy student link</button>
+      </div>
+      <p class="help">There's a separate, simplified link just for students — no login, no tutor controls, no access to any other student's data. Send ${esc(st.name)} two things: the <strong>student link</strong> (button above) and their <strong>exported file</strong> (button up top). They open the link once, use Import to load their file, and see their own progression, corrections and glossary, with flashcard practice built in. Whenever you export an updated file for them later, importing it again cleanly replaces the old one — no duplicates.</p>
     </div>
   </div>`;
 }
@@ -1028,7 +1040,10 @@ function renderReview(st){
 
 /* ---------- flashcards ---------- */
 function startPractice(id){
-  const st = state.students.find(s=>s.id===id); if(!st || !st.glossary.length) return;
+  startPracticeFor(state.students.find(s=>s.id===id));
+}
+function startPracticeFor(st){
+  if(!st || !st.glossary.length) return;
   practice = { active:true, idx:0, order: shuffled(st.glossary.map(g=>g.id)), revealed:false, typeFilter:'all' };
   render();
 }
@@ -1096,18 +1111,51 @@ function exportAll(){
     toast('Downloads are not available in this view');
   }
 }
+function extractStudents(data){
+  if(data.kind==='lesson-copilot-student' && data.student) return [data.student];
+  if(data.kind==='lesson-copilot-backup' && data.state?.students) return data.state.students;
+  if(data.student) return [data.student];
+  if(Array.isArray(data.students)) return data.students;
+  if(data.id && Array.isArray(data.sessions)) return [data];
+  return [];
+}
+function copyStudentLink(){
+  const url = location.origin + location.pathname + '?student=1';
+  const done = () => toast('Student link copied');
+  const fail = () => {
+    const ta = document.createElement('textarea');
+    ta.value = url; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); done(); }catch(e){ toast('Copy this link: '+url); }
+    ta.remove();
+  };
+  if(navigator.clipboard?.writeText) navigator.clipboard.writeText(url).then(done).catch(fail);
+  else fail();
+}
+function handleStudentImport(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let data;
+    try{ data = JSON.parse(reader.result); }catch(e){ toast('That file is not valid JSON'); return; }
+    const incoming = extractStudents(data)[0];
+    if(!incoming){ toast("Couldn't find your lesson file in there"); return; }
+    studentState.student = JSON.parse(JSON.stringify(incoming));
+    saveStudentState();
+    practice.active = false;
+    render();
+    toast('Loaded ' + (incoming.name || 'your file'));
+  };
+  reader.readAsText(file);
+  document.getElementById('studentImportFile').value='';
+}
 function handleImport(file){
   if(!file) return;
   const reader = new FileReader();
   reader.onload = () => {
     let data;
     try{ data = JSON.parse(reader.result); }catch(e){ toast('That file is not valid JSON'); return; }
-    let incoming = [];
-    if(data.kind==='lesson-copilot-student' && data.student) incoming = [data.student];
-    else if(data.kind==='lesson-copilot-backup' && data.state?.students) incoming = data.state.students;
-    else if(data.student) incoming = [data.student];
-    else if(Array.isArray(data.students)) incoming = data.students;
-    else if(data.id && Array.isArray(data.sessions)) incoming = [data];
+    const incoming = extractStudents(data);
     if(!incoming.length){ toast("Couldn't find a student record in that file"); return; }
     incoming.forEach(s=>{
       const copy = JSON.parse(JSON.stringify(s));
@@ -1123,8 +1171,101 @@ function handleImport(file){
   document.getElementById('importFile').value='';
 }
 
+/* ---------- student mode (separate, simplified view for a student's own device) ---------- */
+function renderStudentHeader(){
+  return `
+  <div class="topbar no-print">
+    <div class="brand">
+      <div class="brand-mark">🗣️</div>
+      <div><div class="brand-name">Lesson Copilot</div><div class="brand-tag">Your lesson file · stays on this device</div></div>
+    </div>
+    <div style="display:flex;gap:6px;margin-left:auto">
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('studentImportFile').click()">${studentState.student?'Import updated file':'Import your file'}</button>
+      <input type="file" id="studentImportFile" accept="application/json" style="display:none" onchange="handleStudentImport(this.files[0])">
+    </div>
+  </div>`;
+}
+function renderStudentImportPrompt(){
+  return `
+  <div class="emptystate">
+    <h2>Import your lesson file</h2>
+    <p>Your tutor will send you a small file. Import it here to see your progress, review corrections, and practice your vocabulary — right on this device, whenever you like.</p>
+    <button class="btn btn-primary" onclick="document.getElementById('studentImportFile').click()">Import your file</button>
+  </div>`;
+}
+function renderStudentReport(st){
+  const prog = progression(st);
+  const needsAttention = st.mistakes.filter(m=>m.occurrences.length>1).sort((a,b)=>b.occurrences.length-a.occurrences.length);
+  const singles = st.mistakes.filter(m=>m.occurrences.length===1);
+  const groups = {};
+  Object.keys(GTYPES).forEach(k=>groups[k]=[]);
+  st.glossary.forEach(g=>groups[g.type]?.push(g));
+  return `
+  <div class="stack">
+    <div class="card">
+      <div class="sectionhead">
+        <div>
+          <h3 style="font-size:16px">Hi ${esc(st.name)} — here's your progress</h3>
+          <div class="mini">${esc(st.lang)} &middot; ${esc(st.level)} &middot; ${st.sessions.length} session${st.sessions.length===1?'':'s'}</div>
+        </div>
+        <div class="no-print" style="display:flex;flex-wrap:wrap;gap:8px">
+          <button class="btn btn-sm" onclick="window.print()">Save as PDF</button>
+          <button class="btn btn-sm btn-primary" ${st.glossary.length?'':'disabled'} onclick="startPracticeFor(studentModeStudent())">Practice flashcards</button>
+        </div>
+      </div>
+      <div class="statrow" style="margin-bottom:14px">
+        <div class="stat"><div class="num">${prog.current===null?'—':prog.current+'%'}</div><div class="lbl">Current average</div></div>
+        <div class="stat"><div class="num">${st.glossary.length}</div><div class="lbl">Terms in glossary</div></div>
+      </div>
+      <div class="chart-wrap">${chartSVG(st)}</div>
+    </div>
+
+    <div class="card">
+      <div class="sectionhead"><h3>Things to keep working on</h3><span class="mini mono">${needsAttention.length}</span></div>
+      ${needsAttention.length ? `<div class="stack" style="gap:8px">${needsAttention.map(m=>{
+        const c = CATS[m.category];
+        return `<div class="mistakecard flagged">
+          <div class="row"><span class="pill" style="background:var(${c.t});color:var(${c.v})">${c.label}</span><span class="count">×${m.occurrences.length}</span></div>
+          <div class="txt">${esc(m.text)}</div>
+          ${m.correction?`<div class="fix">→ ${esc(m.correction)}</div>`:''}
+        </div>`;
+      }).join('')}</div>` : `<div class="help">Nothing repeat-flagged — nice work.</div>`}
+      ${singles.length ? `<div style="margin-top:12px">
+        <button class="btn btn-ghost btn-sm no-print" onclick="showFullLog=!showFullLog;render()">${showFullLog?'Hide':'Show'} ${singles.length} more note${singles.length===1?'':'s'}</button>
+        ${showFullLog ? `<div class="quietlist" style="margin-top:8px">${singles.map(m=>`
+          <div class="quietrow"><span>${esc(m.text)}</span>${m.correction?`<span class="mini">→ ${esc(m.correction)}</span>`:''}</div>`).join('')}</div>` : ''}
+      </div>` : ''}
+    </div>
+
+    <div class="card">
+      <div class="sectionhead"><h3>Vocabulary &amp; constructs</h3></div>
+      ${st.glossary.length ? Object.entries(GTYPES).map(([k,meta])=>{
+        const items = groups[k]; if(!items.length) return '';
+        return `<div style="margin-bottom:14px">
+          <div class="eyebrow" style="margin-bottom:8px;color:var(${meta.v})">${meta.label} &middot; ${items.length}</div>
+          <div class="glossgrid">${items.map(g=>`
+            <div class="glosscard">
+              <div class="term">${esc(g.term)}</div>
+              ${g.meaning?`<div class="meaning">${esc(g.meaning)}</div>`:''}
+              ${g.example?`<div class="example">"${esc(g.example)}"</div>`:''}
+            </div>`).join('')}
+          </div>
+        </div>`;
+      }).join('') : `<div class="help">Nothing here yet.</div>`}
+    </div>
+  </div>`;
+}
+function studentModeStudent(){ return studentState.student; }
+function renderStudentApp(){
+  const st = studentState.student;
+  const body = practice.active ? renderPractice(st) :
+    !st ? renderStudentImportPrompt() : renderStudentReport(st);
+  document.getElementById('app').innerHTML = renderStudentHeader() + `<div class="shell" style="padding-top:0">${body}</div>`;
+}
+
 /* ---------- main render ---------- */
 function render(){
+  if(STUDENT_MODE) return renderStudentApp();
   clearInterval(timerHandle); timerHandle=null;
   const st = activeStudent();
   const app = document.getElementById('app');
