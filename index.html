@@ -337,6 +337,9 @@ function openAddStudent(){
         <option>Italian</option><option>Portuguese</option><option>Mandarin</option><option>Japanese</option>
         <option>Korean</option><option>Russian</option><option>Arabic</option>
       </datalist>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="nsMinor" style="width:16px;height:16px"> This student is under 18
+      </label>
       <div class="modalrow">
         <button class="btn" onclick="closeModal()">Cancel</button>
         <button class="btn btn-primary" onclick="confirmAddStudent()">Add student</button>
@@ -352,11 +355,16 @@ function confirmAddStudent(){
   if(!name){ toast('Give the student a name first'); return; }
   const lang = document.getElementById('nsLang').value.trim() || 'General';
   const level = document.getElementById('nsLevel').value;
-  const st = { id:uid(), name, lang, level, color:colorFor(name), createdAt:Date.now(), sessions:[], mistakes:[], glossary:[], watchlist:[], speechLang: guessLangCode(lang) };
+  const isMinor = document.getElementById('nsMinor').checked;
+  const st = { id:uid(), name, lang, level, isMinor, color:colorFor(name), createdAt:Date.now(), sessions:[], mistakes:[], glossary:[], watchlist:[], speechLang: guessLangCode(lang) };
   state.students.push(st);
   state.activeStudentId = st.id;
   closeModal(); save(); view='session'; render();
   toast('Added '+name);
+}
+function toggleMinor(id, val){
+  const s = state.students.find(x=>x.id===id); if(!s) return;
+  s.isMinor = val; save(); render();
 }
 function selectStudent(id){ state.activeStudentId = id; save(); showFullLog=false; practice.active=false; render(); }
 function deleteStudent(id){
@@ -402,10 +410,39 @@ function tagLine(st, text, prevText){
   if(watch.some(w=> w && lower.includes(w.toLowerCase()))) tags.push('watch');
   return tags;
 }
-function toggleRecording(){ recActive ? stopRecording() : startRecording(); }
-function startRecording(){
+function toggleRecording(){
+  if(recActive){ stopRecording(); return; }
   const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
   if(!speechSupported()){ toast('Speech recognition needs Chrome'); return; }
+  if(live.consentConfirmedAt){ startRecording(); return; }
+  openRecordingConsent();
+}
+function openRecordingConsent(){
+  const st = activeStudent(); if(!st) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Before you record</h3>
+      <p class="help">Confirm ${esc(st.name)} knows this session will be recorded for lesson notes. Recording laws vary by location — some places legally require everyone in the conversation to agree, not just you.</p>
+      ${st.isMinor ? `<p class="help" style="color:var(--warn);font-weight:600">${esc(st.name)} is marked as a minor — make sure a parent or guardian is aware too.</p>` : ''}
+      <div class="modalrow">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmRecordingConsent()">Yes, they know — start recording</button>
+      </div>
+    </div>`;
+  overlay.id='modalHost';
+  document.body.appendChild(overlay);
+}
+function confirmRecordingConsent(){
+  const live = state.liveSession; if(!live) return;
+  live.consentConfirmedAt = Date.now();
+  save();
+  closeModal();
+  startRecording();
+}
+function startRecording(){
+  const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
   clearTimeout(recRestartTimer);
   recFailStreak = 0;
   launchRecognizer(st);
@@ -699,7 +736,7 @@ function confirmEndSession(){
     id: live.sessionId, date: live.startedAt,
     durationMin: Math.max(1, Math.round((Date.now()-live.startedAt)/60000)),
     rating, notes, mistakeCount: flagged.length+firstTime.length, recurringCount: flagged.length, vocabCount: vocab.length,
-    transcript: live.transcript||[]
+    transcript: live.transcript||[], consentConfirmedAt: live.consentConfirmedAt||null
   });
   state.liveSession = null;
   closeModal(); save(); view='file'; render();
@@ -819,17 +856,23 @@ function renderSession(st){
           <h3>Recording</h3>
           <div class="timerbox"><span class="dot"></span><span class="t mono" id="timerDisplay">00:00</span></div>
         </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:10px;cursor:pointer">
+          <input type="checkbox" ${st.isMinor?'checked':''} onchange="toggleMinor('${st.id}', this.checked)" style="width:15px;height:15px">
+          ${esc(st.name)} is under 18
+        </label>
         ${speechSupported() ? `
         <p class="help">Uses Chrome's built-in speech recognition — audio is sent to Google to produce text, nothing audio is stored by this app. Works best over speakers; if you're on headphones it can only hear you, not your student.</p>
         <div id="recBanner" class="recbanner ${recState==='listening'?'live':recState==='stalled'?'stalled':'off'}">
           ${recState==='listening' ? `<span class="dot"></span>Recording — listening` : recState==='stalled' ? `Recording stopped unexpectedly<button class="btn btn-sm" style="margin-left:auto" onclick="resumeRecording()">Resume</button>` : `Not recording`}
         </div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
           <button id="recToggleBtn" class="btn btn-sm ${recActive?'recbtn':'off'}" onclick="toggleRecording()">${recActive?'Stop recording':'Start recording'}</button>
           <select onchange="activeStudent().speechLang=this.value;save()">
             ${LANGOPTS.map(([code,label])=>`<option value="${code}" ${((st.speechLang||guessLangCode(st.lang))===code)?'selected':''}>${label}</option>`).join('')}
           </select>
-        </div>` : `<p class="help">Live transcription needs Chrome — everything else on this page still works.</p>`}
+        </div>
+        ${live.consentConfirmedAt ? `<div class="mini">✓ Recording consent confirmed ${esc(fmtDateFull(live.consentConfirmedAt))}</div>` : ''}
+        <div style="margin-bottom:8px"></div>` : `<p class="help">Live transcription needs Chrome — everything else on this page still works.</p>`}
         <div id="interimLine" class="mini" style="min-height:16px;font-style:italic"></div>
         <div id="transcriptLog" class="translog">${(live.transcript||[]).filter(l=>!l.done).map(l=>transcriptLineHTML(live.sessionId,l)).join('')}</div>
         <div class="divider"></div>
@@ -1306,9 +1349,34 @@ function srecLangCode(){
   const st = studentState.student;
   return (st && (st.speechLang || guessLangCode(st.lang))) || 'en-US';
 }
-function toggleStudentRecording(){ srecActive ? stopStudentRecording() : startStudentRecording(); }
-function startStudentRecording(){
+function toggleStudentRecording(){
+  if(srecActive){ stopStudentRecording(); return; }
   if(!speechSupported()){ toast('Recording needs Chrome'); return; }
+  if(studentRecording.consentConfirmedAt){ startStudentRecording(); return; }
+  openStudentRecordingConsent();
+}
+function openStudentRecordingConsent(){
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Before you record</h3>
+      <p class="help">By starting, you're confirming your tutor knows you're recording this lesson, and that you're okay with your own voice being recorded too. If you're under 18, make sure a parent or guardian is okay with this as well.</p>
+      <div class="modalrow">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmStudentRecordingConsent()">I understand — start recording</button>
+      </div>
+    </div>`;
+  overlay.id='modalHost';
+  document.body.appendChild(overlay);
+}
+function confirmStudentRecordingConsent(){
+  studentRecording.consentConfirmedAt = Date.now();
+  saveStudentRecording();
+  closeModal();
+  startStudentRecording();
+}
+function startStudentRecording(){
   clearTimeout(srecRestartTimer);
   srecFailStreak = 0;
   if(!studentRecording.startedAt){ studentRecording.startedAt = Date.now(); saveStudentRecording(); }
@@ -1387,7 +1455,7 @@ function discardStudentRecording(){
 }
 function sendStudentRecording(){
   if(!studentRecording.transcript.length){ toast('Nothing recorded yet'); return; }
-  const data = JSON.stringify({ kind:'lesson-copilot-recording', recordedAt: studentRecording.startedAt, studentName: studentState.student?.name||'', transcript: studentRecording.transcript }, null, 2);
+  const data = JSON.stringify({ kind:'lesson-copilot-recording', recordedAt: studentRecording.startedAt, studentName: studentState.student?.name||'', consentConfirmedAt: studentRecording.consentConfirmedAt||null, transcript: studentRecording.transcript }, null, 2);
   const prefix = studentState.student?.name ? slugify(studentState.student.name)+'-' : '';
   downloadFile(prefix+'recording-'+new Date(studentRecording.startedAt||Date.now()).toISOString().slice(0,10)+'.json', data);
 }
@@ -1406,6 +1474,7 @@ function renderStudentRecordTab(){
       ${hasData ? `<button class="btn btn-primary" onclick="sendStudentRecording()">Save recording to send</button>` : ''}
       ${hasData ? `<button class="btn btn-ghost" onclick="discardStudentRecording()">Clear</button>` : ''}
     </div>
+    ${studentRecording.consentConfirmedAt ? `<div class="mini" style="margin-bottom:6px">✓ Recording consent confirmed</div>` : ''}
     <div id="srecInterim" class="mini" style="min-height:16px;font-style:italic"></div>
     <div id="srecLog" class="translog">${studentRecording.transcript.map(l=>`<div class="transline">${esc(l.text)}</div>`).join('')}</div>
     ` : `<p class="help">Recording needs Chrome — everything else on this page still works.</p>`}
