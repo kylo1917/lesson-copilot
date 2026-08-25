@@ -206,6 +206,24 @@ table.sess td.notes{color:var(--text-2);max-width:280px}
   .shell{max-width:100%;padding:0 8px}
   .card{box-shadow:none;border-color:#ccc}
 }
+
+.recbtn{background:var(--bad);border-color:var(--bad);color:white}
+.recbtn:hover{opacity:.9}
+.recbtn.off{background:var(--surface);border-color:var(--border);color:var(--text)}
+.translog{display:flex;flex-direction:column;gap:4px;max-height:280px;overflow-y:auto;margin-top:6px}
+.transline{display:flex;align-items:flex-start;gap:8px;padding:7px 8px;border-radius:8px;border-left:3px solid transparent;font-size:12.5px}
+.transline.tag-repair{border-color:var(--warn);background:color-mix(in oklch, var(--warn) 8%, transparent)}
+.transline.tag-watch{border-color:var(--accent-strong);background:var(--accent-tint)}
+.transline.tag-filler{border-color:var(--border);opacity:.72}
+.transline .txt{flex:1 1 auto;line-height:1.5}
+.transline .tagpill{font-size:9.5px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--text-3);white-space:nowrap;margin-right:6px}
+.transline .acts{display:flex;gap:4px;flex:0 0 auto}
+.linkbtn{font-size:11px;font-weight:600;color:var(--accent-strong);white-space:nowrap;padding:2px 5px;border-radius:5px}
+.linkbtn:hover{background:var(--accent-tint)}
+.linkbtn.muted{color:var(--text-3)}
+.watchchips{display:flex;flex-wrap:wrap;gap:6px}
+.watchchip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:4px 8px;border-radius:100px;background:var(--surface-2);border:1px solid var(--border-soft)}
+.reviewbadge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;border-radius:100px;background:var(--warn);color:white;font-size:10px;font-weight:700}
 </style>
 
 <div id="app"></div>
@@ -227,6 +245,21 @@ const GTYPES = {
   collocation: {label:'Collocation', v:'--type-collocation', t:'--type-collocation-tint'},
   idiom:       {label:'Idiom', v:'--type-idiom', t:'--type-idiom-tint'},
   metaphor:    {label:'Metaphor', v:'--type-metaphor', t:'--type-metaphor-tint'}
+};
+const LANGMAP = {
+  english:'en-US', spanish:'es-ES', french:'fr-FR', german:'de-DE', italian:'it-IT',
+  portuguese:'pt-PT', mandarin:'zh-CN', chinese:'zh-CN', japanese:'ja-JP', korean:'ko-KR',
+  russian:'ru-RU', arabic:'ar-SA'
+};
+const LANGOPTS = [
+  ['en-US','English'],['es-ES','Spanish'],['fr-FR','French'],['de-DE','German'],['it-IT','Italian'],
+  ['pt-PT','Portuguese'],['zh-CN','Mandarin'],['ja-JP','Japanese'],['ko-KR','Korean'],['ru-RU','Russian'],['ar-SA','Arabic']
+];
+function guessLangCode(langName){ return LANGMAP[norm(langName).replace(/\s+/g,'')] || 'en-US'; }
+const TAGMETA = {
+  repair: {label:'Possible self-correction'},
+  watch:  {label:'Watchlist match'},
+  filler: {label:'Filler / hesitation'}
 };
 
 function uid(){ return Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4); }
@@ -251,6 +284,7 @@ let showFullLog = false;
 let practice = { active:false, idx:0, order:[], revealed:false, typeFilter:'all' };
 let timerHandle = null;
 let pendingEnd = false;
+let reviewSessionId = null;
 
 function activeStudent(){ return state.students.find(s=>s.id===state.activeStudentId) || null; }
 
@@ -297,7 +331,7 @@ function confirmAddStudent(){
   if(!name){ toast('Give the student a name first'); return; }
   const lang = document.getElementById('nsLang').value.trim() || 'General';
   const level = document.getElementById('nsLevel').value;
-  const st = { id:uid(), name, lang, level, color:colorFor(name), createdAt:Date.now(), sessions:[], mistakes:[], glossary:[] };
+  const st = { id:uid(), name, lang, level, color:colorFor(name), createdAt:Date.now(), sessions:[], mistakes:[], glossary:[], watchlist:[], speechLang: guessLangCode(lang) };
   state.students.push(st);
   state.activeStudentId = st.id;
   closeModal(); save(); view='session'; render();
@@ -317,26 +351,231 @@ function deleteStudent(id){
 function startSession(){
   const st = activeStudent(); if(!st) return;
   if(state.liveSession && state.liveSession.studentId!==st.id){ toast('Finish the session in progress for the other student first'); return; }
-  state.liveSession = { studentId: st.id, sessionId: uid(), startedAt: Date.now() };
+  state.liveSession = { studentId: st.id, sessionId: uid(), startedAt: Date.now(), transcript: [] };
   save(); render();
 }
 function liveMistakeFor(st){ return state.liveSession && state.liveSession.studentId===st.id ? state.liveSession : null; }
+function transcriptFor(st, sessionId){
+  if(state.liveSession && state.liveSession.sessionId===sessionId) return state.liveSession.transcript;
+  const sess = st.sessions.find(s=>s.id===sessionId);
+  return sess ? (sess.transcript || (sess.transcript=[])) : null;
+}
 
+/* ---------- recording & heuristic tagging ---------- */
+let recognizer = null, recActive = false;
+function speechSupported(){ return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
+function wordOverlap(a,b){
+  const sa = new Set(norm(a).split(' ').filter(Boolean));
+  const sb = new Set(norm(b).split(' ').filter(Boolean));
+  if(!sa.size || !sb.size) return 0;
+  let inter=0; sa.forEach(w=>{ if(sb.has(w)) inter++; });
+  return inter/Math.max(sa.size,sb.size);
+}
+const FILLER_RE = /\b(um+|uh+|erm+|like|you know|i mean|sort of|kind of)\b/i;
+function tagLine(st, text, prevText){
+  const tags = [];
+  if(FILLER_RE.test(text)) tags.push('filler');
+  if(prevText && norm(prevText)!==norm(text) && wordOverlap(prevText,text) >= 0.5) tags.push('repair');
+  const watch = st.watchlist||[];
+  const lower = text.toLowerCase();
+  if(watch.some(w=> w && lower.includes(w.toLowerCase()))) tags.push('watch');
+  return tags;
+}
+function toggleRecording(){ recActive ? stopRecording() : startRecording(); }
+function startRecording(){
+  const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
+  if(!speechSupported()){ toast('Speech recognition needs Chrome'); return; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognizer = new SR();
+  recognizer.continuous = true;
+  recognizer.interimResults = true;
+  recognizer.lang = st.speechLang || guessLangCode(st.lang);
+  recognizer.onresult = handleRecResult;
+  recognizer.onerror = (e) => {
+    if(e.error==='not-allowed' || e.error==='service-not-allowed'){
+      toast('Microphone access was blocked — allow it in the browser to record');
+      stopRecording();
+      return;
+    }
+    if(recActive) try{ recognizer.start(); }catch(err){}
+  };
+  recognizer.onend = () => { if(recActive) try{ recognizer.start(); }catch(e){} };
+  recActive = true;
+  try{ recognizer.start(); }catch(e){}
+  updateRecUI();
+}
+function stopRecording(){
+  recActive = false;
+  try{ recognizer && recognizer.stop(); }catch(e){}
+  recognizer = null;
+  updateRecUI();
+}
+function updateRecUI(){
+  const btn = document.getElementById('recToggleBtn');
+  if(btn){ btn.textContent = recActive ? 'Stop recording' : 'Start recording'; btn.classList.toggle('recbtn', recActive); btn.classList.toggle('off', !recActive); }
+  const status = document.getElementById('recStatus');
+  if(status) status.textContent = recActive ? 'Listening…' : '';
+}
+function handleRecResult(e){
+  const live = state.liveSession; if(!live) return;
+  const st = state.students.find(s=>s.id===live.studentId); if(!st) return;
+  let interim = '';
+  for(let i=e.resultIndex;i<e.results.length;i++){
+    const res = e.results[i];
+    const text = res[0].transcript.trim();
+    if(res.isFinal){ if(text) pushTranscriptLine(st, live, text); }
+    else interim += text;
+  }
+  if(activeStudent()?.id !== st.id) return;
+  const interimEl = document.getElementById('interimLine');
+  if(interimEl) interimEl.textContent = interim;
+}
+function pushTranscriptLine(st, live, text){
+  const prev = live.transcript[live.transcript.length-1];
+  const line = { id:uid(), t: Date.now()-live.startedAt, text, tags: tagLine(st, text, prev?prev.text:null), done:false };
+  live.transcript.push(line);
+  save();
+  const log = document.getElementById('transcriptLog');
+  if(log){
+    log.insertAdjacentHTML('beforeend', transcriptLineHTML(live.sessionId, line));
+    log.scrollTop = log.scrollHeight;
+  }
+}
+function transcriptLineHTML(sessionId, line){
+  const tagLabel = line.tags.includes('watch') ? TAGMETA.watch.label : line.tags.includes('repair') ? TAGMETA.repair.label : line.tags.includes('filler') ? TAGMETA.filler.label : '';
+  const cls = line.tags.includes('watch') ? 'tag-watch' : line.tags.includes('repair') ? 'tag-repair' : line.tags.includes('filler') ? 'tag-filler' : '';
+  return `<div class="transline ${cls}" data-line="${line.id}">
+    <div class="txt">${tagLabel?`<span class="tagpill">${tagLabel}</span>`:''}${esc(line.text)}</div>
+    <div class="acts no-print">
+      <button class="linkbtn" onclick="openTagAsMistake('${sessionId}','${line.id}')">+ mistake</button>
+      <button class="linkbtn" onclick="openTagAsVocab('${sessionId}','${line.id}')">+ vocab</button>
+      <button class="linkbtn muted" onclick="dismissLine('${sessionId}','${line.id}')">dismiss</button>
+    </div>
+  </div>`;
+}
+function findLine(sessionId, lineId){
+  const st = activeStudent(); if(!st) return null;
+  const t = transcriptFor(st, sessionId); if(!t) return null;
+  return t.find(l=>l.id===lineId) || null;
+}
+function dismissLine(sessionId, lineId){
+  const line = findLine(sessionId, lineId); if(!line) return;
+  line.done = true; save();
+  document.querySelector(`[data-line="${lineId}"]`)?.remove();
+}
+function openTagAsMistake(sessionId, lineId){
+  const line = findLine(sessionId, lineId); if(!line) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Flag as mistake</h3>
+      <div class="field"><label>What they said</label><input id="tmText" value="${esc(line.text)}"></div>
+      <div class="field"><label>Correction (optional)</label><input id="tmFix" placeholder="How it should be said"></div>
+      <div class="field"><label>Category</label>
+        <select id="tmCat">${Object.entries(CATS).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join('')}</select>
+      </div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmTagAsMistake('${sessionId}','${lineId}')">Add to log</button>
+      </div>
+    </div>`;
+  overlay.id='modalHost';
+  document.body.appendChild(overlay);
+}
+function confirmTagAsMistake(sessionId, lineId){
+  const st = activeStudent(); if(!st) return;
+  const text = document.getElementById('tmText').value.trim();
+  const correction = document.getElementById('tmFix').value.trim();
+  const category = document.getElementById('tmCat').value;
+  addMistake(st, sessionId, text, correction, category);
+  const line = findLine(sessionId, lineId); if(line) line.done = true;
+  closeModal(); save();
+  document.querySelector(`[data-line="${lineId}"]`)?.remove();
+  toast('Added to mistake log');
+}
+function openTagAsVocab(sessionId, lineId){
+  const line = findLine(sessionId, lineId); if(!line) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Add to glossary</h3>
+      <div class="field"><label>Term</label><input id="tgTerm" value="${esc(line.text)}"></div>
+      <div class="field"><label>Type</label>
+        <select id="tgType">${Object.entries(GTYPES).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>Meaning (optional)</label><input id="tgMean"></div>
+      <div class="field"><label>Example (optional)</label><input id="tgEx"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmTagAsVocab('${sessionId}','${lineId}')">Add to glossary</button>
+      </div>
+    </div>`;
+  overlay.id='modalHost';
+  document.body.appendChild(overlay);
+}
+function confirmTagAsVocab(sessionId, lineId){
+  const st = activeStudent(); if(!st) return;
+  const term = document.getElementById('tgTerm').value.trim();
+  const type = document.getElementById('tgType').value;
+  const meaning = document.getElementById('tgMean').value.trim();
+  const example = document.getElementById('tgEx').value.trim();
+  addGlossary(st, sessionId, term, type, meaning, example);
+  const line = findLine(sessionId, lineId); if(line) line.done = true;
+  closeModal(); save();
+  document.querySelector(`[data-line="${lineId}"]`)?.remove();
+  toast('Added to glossary');
+}
+function addWatchTerm(){
+  const st = activeStudent(); if(!st) return;
+  const input = document.getElementById('watchInput');
+  const term = input.value.trim(); if(!term) return;
+  st.watchlist = st.watchlist || [];
+  if(!st.watchlist.some(w=>norm(w)===norm(term))) st.watchlist.push(term);
+  input.value = '';
+  save(); render();
+}
+function removeWatchTerm(term){
+  const st = activeStudent(); if(!st) return;
+  st.watchlist = (st.watchlist||[]).filter(w=>w!==term);
+  save(); render();
+}
+
+function addMistake(st, sessionId, text, correction, category){
+  if(!text) return null;
+  const key = category+'|'+norm(text);
+  let m = st.mistakes.find(x=> (x.category+'|'+norm(x.text))===key );
+  if(m){
+    if(correction && !m.correction) m.correction = correction;
+    m.occurrences.push({sessionId, date: Date.now()});
+  } else {
+    m = { id:uid(), category, text, correction, occurrences:[{sessionId, date: Date.now()}] };
+    st.mistakes.push(m);
+  }
+  return m;
+}
+function addGlossary(st, sessionId, term, type, meaning, example){
+  if(!term) return null;
+  const key = type+'|'+norm(term);
+  let g = st.glossary.find(x=> (x.type+'|'+norm(x.term))===key );
+  if(g){
+    if(meaning) g.meaning = meaning;
+    if(example) g.example = example;
+    g.occurrences.push({sessionId, date: Date.now()});
+  } else {
+    g = { id:uid(), type, term, meaning, example, occurrences:[{sessionId, date: Date.now()}] };
+    st.glossary.push(g);
+  }
+  return g;
+}
 function logMistake(){
   const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
   const text = document.getElementById('mText').value.trim();
   if(!text){ toast('Add what was said first'); return; }
   const correction = document.getElementById('mFix').value.trim();
   const category = document.getElementById('mCat').value;
-  const key = category+'|'+norm(text);
-  let m = st.mistakes.find(x=> (x.category+'|'+norm(x.text))===key );
-  if(m){
-    if(correction && !m.correction) m.correction = correction;
-    m.occurrences.push({sessionId: live.sessionId, date: Date.now()});
-  } else {
-    m = { id:uid(), category, text, correction, occurrences:[{sessionId: live.sessionId, date: Date.now()}] };
-    st.mistakes.push(m);
-  }
+  addMistake(st, live.sessionId, text, correction, category);
   save(); render();
 }
 function removeMistake(id){
@@ -351,16 +590,7 @@ function logGlossary(){
   const type = document.getElementById('gType').value;
   const meaning = document.getElementById('gMean').value.trim();
   const example = document.getElementById('gEx').value.trim();
-  const key = type+'|'+norm(term);
-  let g = st.glossary.find(x=> (x.type+'|'+norm(x.term))===key );
-  if(g){
-    if(meaning) g.meaning = meaning;
-    if(example) g.example = example;
-    g.occurrences.push({sessionId: live.sessionId, date: Date.now()});
-  } else {
-    g = { id:uid(), type, term, meaning, example, occurrences:[{sessionId: live.sessionId, date: Date.now()}] };
-    st.glossary.push(g);
-  }
+  addGlossary(st, live.sessionId, term, type, meaning, example);
   save(); render();
 }
 function removeGlossary(id){
@@ -406,20 +636,24 @@ function openEndSession(){
 }
 function confirmEndSession(){
   const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
+  stopRecording();
   const rating = Number(document.getElementById('scoreRange').value);
   const notes = document.getElementById('sessNotes').value.trim();
   const {flagged, firstTime, vocab} = sessionStats(st, live.sessionId);
+  const unreviewed = (live.transcript||[]).filter(l=>!l.done && l.tags.length).length;
   st.sessions.push({
     id: live.sessionId, date: live.startedAt,
     durationMin: Math.max(1, Math.round((Date.now()-live.startedAt)/60000)),
-    rating, notes, mistakeCount: flagged.length+firstTime.length, recurringCount: flagged.length, vocabCount: vocab.length
+    rating, notes, mistakeCount: flagged.length+firstTime.length, recurringCount: flagged.length, vocabCount: vocab.length,
+    transcript: live.transcript||[]
   });
   state.liveSession = null;
   closeModal(); save(); view='file'; render();
-  toast('Session saved to '+st.name+"'s file");
+  toast(unreviewed ? `Saved — ${unreviewed} transcript moment${unreviewed===1?'':'s'} to review when you have time` : 'Session saved to '+st.name+"'s file");
 }
 function discardSession(){
-  if(!confirm('Discard this session? Mistakes and vocabulary already logged will stay in the file, but no session record or score will be saved.')) return;
+  if(!confirm('Discard this session? Mistakes and vocabulary already logged will stay in the file, but no session record, transcript or score will be saved.')) return;
+  stopRecording();
   state.liveSession = null; save(); render();
 }
 
@@ -486,7 +720,7 @@ function renderHeader(){
   <div class="topbar no-print">
     <div class="brand">
       <div class="brand-mark">🗣️</div>
-      <div><div class="brand-name">Lesson Copilot</div><div class="brand-tag">Runs beside any call · nothing leaves your browser</div></div>
+      <div><div class="brand-name">Lesson Copilot</div><div class="brand-tag">Runs beside any call · your records stay on this device</div></div>
     </div>
     <div class="studentbar">
       ${chips}
@@ -510,7 +744,7 @@ function renderSession(st){
     <div class="card" style="text-align:center;padding:34px 20px">
       <div class="eyebrow">Ready when you are</div>
       <h2 style="font-size:18px;margin:8px 0 6px">Start a session with ${esc(st.name)}</h2>
-      <p class="help" style="max-width:440px;margin:0 auto 14px">Log mistakes and new vocabulary as they come up on the call. Nothing is flagged to you as a pattern until it repeats — first-time slips stay quiet in the log.</p>
+      <p class="help" style="max-width:440px;margin:0 auto 14px">Turn on recording and just teach — the transcript builds itself, with likely moments highlighted for you to tag after class. You can also log anything by hand in the moment if you'd rather.</p>
       <button class="btn btn-primary" ${otherLive?'disabled':''} onclick="startSession()">Start session</button>
       ${otherLive?'<div class="mini" style="margin-top:8px">Finish the session already running for another student first.</div>':''}
       ${st.sessions.length ? `<div class="mini" style="margin-top:14px">${st.sessions.length} session${st.sessions.length>1?'s':''} recorded so far &middot; last on ${esc(fmtDateFull(st.sessions[st.sessions.length-1].date))}</div>` : ''}
@@ -521,15 +755,38 @@ function renderSession(st){
     .sort((a,b)=> b.occurrences.length-a.occurrences.length);
   const quiet = st.mistakes.filter(m => m.occurrences.some(o=>o.sessionId===live.sessionId) && m.occurrences.length===1);
   const vocabToday = st.glossary.filter(g => g.occurrences.some(o=>o.sessionId===live.sessionId));
+  const watchlist = st.watchlist||[];
 
   return `
   <div class="grid2">
     <div class="stack">
       <div class="card">
         <div class="sectionhead">
-          <h3>Log a mistake</h3>
+          <h3>Recording</h3>
           <div class="timerbox"><span class="dot"></span><span class="t mono" id="timerDisplay">00:00</span></div>
         </div>
+        ${speechSupported() ? `
+        <p class="help">Uses Chrome's built-in speech recognition — audio is sent to Google to produce text, nothing audio is stored by this app. Works best over speakers; if you're on headphones it can only hear you, not your student.</p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+          <button id="recToggleBtn" class="btn btn-sm ${recActive?'recbtn':'off'}" onclick="toggleRecording()">${recActive?'Stop recording':'Start recording'}</button>
+          <select onchange="activeStudent().speechLang=this.value;save()">
+            ${LANGOPTS.map(([code,label])=>`<option value="${code}" ${((st.speechLang||guessLangCode(st.lang))===code)?'selected':''}>${label}</option>`).join('')}
+          </select>
+          <span id="recStatus" class="mini">${recActive?'Listening…':''}</span>
+        </div>` : `<p class="help">Live transcription needs Chrome — everything else on this page still works.</p>`}
+        <div id="interimLine" class="mini" style="min-height:16px;font-style:italic"></div>
+        <div id="transcriptLog" class="translog">${(live.transcript||[]).filter(l=>!l.done).map(l=>transcriptLineHTML(live.sessionId,l)).join('')}</div>
+        <div class="divider"></div>
+        <div class="eyebrow" style="margin-bottom:6px">Watchlist — highlight these words when heard</div>
+        <div class="watchchips" style="margin-bottom:8px">${watchlist.map(w=>`<span class="watchchip">${esc(w)}<button class="xbtn" style="margin-left:0" onclick="removeWatchTerm('${esc(w).replace(/'/g,"\\'")}')">×</button></span>`).join('') || '<span class="mini">None yet — add terms you are actively working on, like "ser/estar" or "subjunctive"</span>'}</div>
+        <div style="display:flex;gap:6px">
+          <input id="watchInput" placeholder="e.g. subjunctive" style="flex:1 1 auto;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter')addWatchTerm()">
+          <button class="btn btn-sm" onclick="addWatchTerm()">Add</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="sectionhead"><h3>Log a mistake manually</h3></div>
         <div class="stack" style="gap:10px">
           <div class="formrow">
             <div class="field" style="flex:2 1 220px"><label>What they said</label><input id="mText" placeholder="e.g. soy cansada"></div>
@@ -649,13 +906,17 @@ function renderFile(st){
       <div class="divider"></div>
       <div class="eyebrow" style="margin-bottom:8px">Session history</div>
       <div style="overflow-x:auto">
-      <table class="sess"><thead><tr><th>Date</th><th>Duration</th><th>Score</th><th>Notes</th></tr></thead><tbody>
-        ${st.sessions.slice().reverse().map(s=>`<tr>
+      <table class="sess"><thead><tr><th>Date</th><th>Duration</th><th>Score</th><th>Notes</th><th class="no-print">Transcript</th></tr></thead><tbody>
+        ${st.sessions.slice().reverse().map(s=>{
+          const unread = (s.transcript||[]).filter(l=>!l.done && l.tags.length).length;
+          return `<tr>
           <td class="mono">${esc(fmtDateFull(s.date))}</td>
           <td class="mono">${s.durationMin}m</td>
           <td class="mono">${s.rating}%</td>
           <td class="notes">${esc(s.notes)||'—'}</td>
-        </tr>`).join('')}
+          <td class="no-print">${(s.transcript&&s.transcript.length) ? `<button class="linkbtn" onclick="openReview('${s.id}')">Review${unread?` <span class="reviewbadge">${unread}</span>`:''}</button>` : '—'}</td>
+        </tr>`;
+        }).join('')}
       </tbody></table>
       </div>` : ''}
     </div>
@@ -706,6 +967,22 @@ function renderFile(st){
       <div class="sectionhead"><h3>Share with ${esc(st.name)}</h3></div>
       <p class="help">This tool works fully in the browser and keeps everything local to whoever has it open — nothing syncs automatically. To hand ${esc(st.name)} their own copy: click <strong>Export file</strong> above to download their record, then send them that file along with this page's link. They open the link and use <strong>Import</strong> in the top bar to load it — they'll see their own progression, mistake list and glossary, and can run flashcard practice on their own, with no access to any other student's data.</p>
     </div>
+  </div>`;
+}
+
+/* ---------- transcript review (after the fact) ---------- */
+function openReview(sessionId){ reviewSessionId = sessionId; render(); }
+function renderReview(st){
+  const sess = st.sessions.find(s=>s.id===reviewSessionId);
+  if(!sess){ reviewSessionId=null; return renderFile(st); }
+  const lines = (sess.transcript||[]).filter(l=>!l.done);
+  return `
+  <div class="card">
+    <div class="sectionhead">
+      <div><h3>Reviewing session from ${esc(fmtDateFull(sess.date))}</h3><div class="mini">${lines.length} moment${lines.length===1?'':'s'} left to review</div></div>
+      <button class="btn btn-sm" onclick="reviewSessionId=null;render()">Back to file</button>
+    </div>
+    ${lines.length ? `<div class="translog" style="max-height:none">${lines.map(l=>transcriptLineHTML(sess.id,l)).join('')}</div>` : `<div class="help">Nothing left to review in this session — everything's been tagged or dismissed.</div>`}
   </div>`;
 }
 
@@ -817,7 +1094,7 @@ function render(){
     <div class="shell" style="padding-top:0">
       <div class="emptystate">
         <h2>Set up your first student</h2>
-        <p>Lesson Copilot sits beside your call. Log mistakes and new vocabulary as they happen — it only flags a mistake once it repeats — and it keeps a running file per student with their progression and glossary.</p>
+        <p>Lesson Copilot sits beside your call. Turn on recording and it transcribes the session live, highlighting moments worth a look — you review and tag them whenever you have time. It keeps a running file per student with their progression and glossary.</p>
         <button class="btn btn-primary" onclick="openAddStudent()">Add a student</button>
       </div>
     </div>`;
@@ -826,13 +1103,14 @@ function render(){
 
   const live = liveMistakeFor(st);
   const body = practice.active ? renderPractice(st) :
+    (view==='file' && reviewSessionId) ? renderReview(st) :
     view==='session' ? renderSession(st) : renderFile(st);
 
   document.getElementById('app').innerHTML = renderHeader() + `
     <div class="shell" style="padding-top:0">
       <div class="tabs no-print">
-        <button class="tab ${view==='session'?'active':''}" onclick="practice.active=false;view='session';render()">Live session ${live?'<span class=\"livepip\"></span>':''}</button>
-        <button class="tab ${view==='file'?'active':''}" onclick="practice.active=false;view='file';render()">Student file</button>
+        <button class="tab ${view==='session'?'active':''}" onclick="practice.active=false;reviewSessionId=null;view='session';render()">Live session ${live?'<span class=\"livepip\"></span>':''}</button>
+        <button class="tab ${view==='file'?'active':''}" onclick="practice.active=false;reviewSessionId=null;view='file';render()">Student file</button>
       </div>
       ${body}
     </div>`;
