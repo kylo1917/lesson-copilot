@@ -291,6 +291,13 @@ function loadStudentState(){
 }
 function saveStudentState(){ localStorage.setItem(STUDENT_STORE_KEY, JSON.stringify(studentState)); }
 let studentState = loadStudentState();
+let studentTab = 'progress'; // 'progress' | 'record'
+function loadStudentRecording(){
+  try{ const raw = localStorage.getItem('lessoncopilot_recording_v1'); if(raw) return JSON.parse(raw); }catch(e){}
+  return { startedAt: null, transcript: [] };
+}
+function saveStudentRecording(){ localStorage.setItem('lessoncopilot_recording_v1', JSON.stringify(studentRecording)); }
+let studentRecording = loadStudentRecording();
 
 let state = load();
 let view = 'session'; // 'session' | 'file'
@@ -955,7 +962,7 @@ function renderFile(st){
       <div class="divider"></div>
       <div class="eyebrow" style="margin-bottom:8px">Session history</div>
       <div style="overflow-x:auto">
-      <table class="sess"><thead><tr><th>Date</th><th>Duration</th><th>Score</th><th>Notes</th><th class="no-print">Transcript</th></tr></thead><tbody>
+      <table class="sess"><thead><tr><th>Date</th><th>Duration</th><th>Score</th><th>Notes</th><th class="no-print">Transcript</th><th class="no-print">Student recording</th></tr></thead><tbody>
         ${st.sessions.slice().reverse().map(s=>{
           const unread = (s.transcript||[]).filter(l=>!l.done && l.tags.length).length;
           return `<tr>
@@ -964,10 +971,13 @@ function renderFile(st){
           <td class="mono">${s.rating}%</td>
           <td class="notes">${esc(s.notes)||'—'}</td>
           <td class="no-print">${(s.transcript&&s.transcript.length) ? `<button class="linkbtn" onclick="openReview('${s.id}')">Review${unread?` <span class="reviewbadge">${unread}</span>`:''}</button>` : '—'}</td>
+          <td class="no-print"><button class="linkbtn muted" onclick="importRecordingForSession('${s.id}')">Import recording</button></td>
         </tr>`;
         }).join('')}
       </tbody></table>
       </div>` : ''}
+      <input type="file" id="recImportFile" accept="application/json" style="display:none" onchange="handleRecordingImport(this.files[0])">
+      <input type="hidden" id="recImportTarget">
     </div>
 
     <div class="card">
@@ -1024,6 +1034,33 @@ function renderFile(st){
 
 /* ---------- transcript review (after the fact) ---------- */
 function openReview(sessionId){ reviewSessionId = sessionId; render(); }
+function importRecordingForSession(sessionId){
+  document.getElementById('recImportTarget').value = sessionId;
+  document.getElementById('recImportFile').click();
+}
+function handleRecordingImport(file){
+  if(!file) return;
+  const sessionId = document.getElementById('recImportTarget').value;
+  const st = activeStudent(); if(!st) return;
+  const sess = st.sessions.find(s=>s.id===sessionId); if(!sess) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let data;
+    try{ data = JSON.parse(reader.result); }catch(e){ toast('That file is not valid JSON'); return; }
+    const lines = Array.isArray(data.transcript) ? data.transcript : null;
+    if(!lines || !lines.length){ toast("Couldn't find a recording in that file"); return; }
+    if(!confirm("Replace this session's transcript with your student's recording? Mistakes and vocabulary you've already logged stay untouched — only the raw transcript left to review changes.")) return;
+    let prev = null;
+    sess.transcript = lines.map(l=>{
+      const tags = tagLine(st, l.text, prev); prev = l.text;
+      return { id:uid(), t:l.t||0, text:l.text, tags, done:false };
+    });
+    save(); render();
+    toast("Swapped in your student's recording — ready to review");
+  };
+  reader.readAsText(file);
+  document.getElementById('recImportFile').value='';
+}
 function renderReview(st){
   const sess = st.sessions.find(s=>s.id===reviewSessionId);
   if(!sess){ reviewSessionId=null; return renderFile(st); }
@@ -1089,27 +1126,33 @@ function renderPractice(st){
 }
 
 /* ---------- import / export ---------- */
+function downloadFile(filename, data, mime){
+  if(window.claude?.downloads){
+    return window.claude.downloads.save({ filename, data })
+      .then(()=>toast('Saved '+filename))
+      .catch(err=>toast(err?.code==='declined' ? 'Save cancelled' : 'Could not save the file'));
+  }
+  try{
+    const blob = new Blob([data], { type: mime||'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+    toast('Saved '+filename);
+  }catch(e){
+    toast('Could not save the file');
+  }
+}
+function slugify(name){ return String(name).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
 function exportStudent(id){
   const st = state.students.find(s=>s.id===id); if(!st) return;
   const data = JSON.stringify({ kind:'lesson-copilot-student', exportedAt: Date.now(), student: st }, null, 2);
-  const filename = st.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'')+'-lesson-file.json';
-  if(window.claude?.downloads){
-    window.claude.downloads.save({ filename, data })
-      .then(()=>toast('Saved '+filename))
-      .catch(err=>toast(err?.code==='declined' ? 'Export cancelled' : 'Could not save the file'));
-  } else {
-    toast('Downloads are not available in this view');
-  }
+  downloadFile(slugify(st.name)+'-lesson-file.json', data);
 }
 function exportAll(){
   const data = JSON.stringify({ kind:'lesson-copilot-backup', exportedAt: Date.now(), state }, null, 2);
-  if(window.claude?.downloads){
-    window.claude.downloads.save({ filename:'lesson-copilot-backup.json', data })
-      .then(()=>toast('Backup saved'))
-      .catch(err=>toast(err?.code==='declined' ? 'Backup cancelled' : 'Could not save the backup'));
-  } else {
-    toast('Downloads are not available in this view');
-  }
+  downloadFile('lesson-copilot-backup.json', data);
 }
 function extractStudents(data){
   if(data.kind==='lesson-copilot-student' && data.student) return [data.student];
@@ -1256,11 +1299,132 @@ function renderStudentReport(st){
   </div>`;
 }
 function studentModeStudent(){ return studentState.student; }
+
+/* ---------- student-side lesson recording (record-only; handed to the tutor afterward) ---------- */
+let srec = null, srecActive = false, srecState = 'off', srecFailStreak = 0, srecRestartTimer = null, srecStartedAt = 0;
+function srecLangCode(){
+  const st = studentState.student;
+  return (st && (st.speechLang || guessLangCode(st.lang))) || 'en-US';
+}
+function toggleStudentRecording(){ srecActive ? stopStudentRecording() : startStudentRecording(); }
+function startStudentRecording(){
+  if(!speechSupported()){ toast('Recording needs Chrome'); return; }
+  clearTimeout(srecRestartTimer);
+  srecFailStreak = 0;
+  if(!studentRecording.startedAt){ studentRecording.startedAt = Date.now(); saveStudentRecording(); }
+  launchSRec();
+  srecActive = true; srecState = 'listening';
+  updateSRecUI();
+}
+function launchSRec(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  srec = new SR();
+  srec.continuous = true;
+  srec.interimResults = true;
+  srec.lang = srecLangCode();
+  srec.onresult = (e) => {
+    srecFailStreak = 0;
+    let interim = '';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const res = e.results[i];
+      const text = res[0].transcript.trim();
+      if(res.isFinal){
+        if(text){
+          studentRecording.transcript.push({ t: Date.now()-studentRecording.startedAt, text });
+          saveStudentRecording();
+          const log = document.getElementById('srecLog');
+          if(log){ log.insertAdjacentHTML('beforeend', `<div class="transline">${esc(text)}</div>`); log.scrollTop = log.scrollHeight; }
+        }
+      } else interim += text;
+    }
+    const el = document.getElementById('srecInterim');
+    if(el) el.textContent = interim;
+  };
+  srec.onerror = (e) => {
+    if(e.error==='not-allowed' || e.error==='service-not-allowed'){
+      toast('Microphone access was blocked — allow it in the browser to record');
+      srecState='off'; srecActive=false; srec=null; updateSRecUI();
+    }
+  };
+  srec.onstart = () => { srecStartedAt = Date.now(); };
+  srec.onend = () => {
+    if(!srecActive) return;
+    const livedFor = Date.now() - srecStartedAt;
+    srecFailStreak = livedFor < 1500 ? srecFailStreak + 1 : 0;
+    if(srecFailStreak >= 4){ srecState = 'stalled'; srecActive = false; updateSRecUI(); return; }
+    srecRestartTimer = setTimeout(()=>{ if(srecActive) launchSRec(); }, 350);
+  };
+  srecStartedAt = Date.now();
+  try{ srec.start(); }catch(e){}
+}
+function resumeStudentRecording(){
+  srecFailStreak = 0; srecState = 'listening'; srecActive = true;
+  launchSRec(); updateSRecUI();
+}
+function stopStudentRecording(){
+  srecActive = false; srecState = 'off';
+  clearTimeout(srecRestartTimer);
+  try{ srec && srec.stop(); }catch(e){}
+  srec = null;
+  updateSRecUI();
+}
+function updateSRecUI(){
+  const btn = document.getElementById('srecToggleBtn');
+  if(btn){ btn.textContent = srecActive ? 'Stop recording' : 'Start recording'; btn.classList.toggle('recbtn', srecActive); btn.classList.toggle('off', !srecActive); }
+  const banner = document.getElementById('srecBanner');
+  if(banner){
+    if(srecState==='listening') banner.outerHTML = `<div id="srecBanner" class="recbanner live"><span class="dot"></span>Recording — listening</div>`;
+    else if(srecState==='stalled') banner.outerHTML = `<div id="srecBanner" class="recbanner stalled">Recording stopped unexpectedly<button class="btn btn-sm" style="margin-left:auto" onclick="resumeStudentRecording()">Resume</button></div>`;
+    else banner.outerHTML = `<div id="srecBanner" class="recbanner off">Not recording</div>`;
+  }
+}
+function discardStudentRecording(){
+  if(!confirm('Clear this recording? This cannot be undone.')) return;
+  stopStudentRecording();
+  studentRecording = { startedAt: null, transcript: [] };
+  saveStudentRecording();
+  render();
+}
+function sendStudentRecording(){
+  if(!studentRecording.transcript.length){ toast('Nothing recorded yet'); return; }
+  const data = JSON.stringify({ kind:'lesson-copilot-recording', recordedAt: studentRecording.startedAt, studentName: studentState.student?.name||'', transcript: studentRecording.transcript }, null, 2);
+  const prefix = studentState.student?.name ? slugify(studentState.student.name)+'-' : '';
+  downloadFile(prefix+'recording-'+new Date(studentRecording.startedAt||Date.now()).toISOString().slice(0,10)+'.json', data);
+}
+function renderStudentRecordTab(){
+  const hasData = studentRecording.transcript.length>0;
+  return `
+  <div class="card">
+    <div class="sectionhead"><h3>Record this lesson</h3></div>
+    ${speechSupported() ? `
+    <p class="help">Click start at the beginning of your lesson and just talk normally — there's nothing else to do. Your tutor will use this afterward; it isn't sent anywhere automatically.</p>
+    <div id="srecBanner" class="recbanner ${srecState==='listening'?'live':srecState==='stalled'?'stalled':'off'}">
+      ${srecState==='listening' ? `<span class="dot"></span>Recording — listening` : srecState==='stalled' ? `Recording stopped unexpectedly<button class="btn btn-sm" style="margin-left:auto" onclick="resumeStudentRecording()">Resume</button>` : `Not recording`}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <button id="srecToggleBtn" class="btn ${srecActive?'recbtn':'off'}" onclick="toggleStudentRecording()">${srecActive?'Stop recording':'Start recording'}</button>
+      ${hasData ? `<button class="btn btn-primary" onclick="sendStudentRecording()">Save recording to send</button>` : ''}
+      ${hasData ? `<button class="btn btn-ghost" onclick="discardStudentRecording()">Clear</button>` : ''}
+    </div>
+    <div id="srecInterim" class="mini" style="min-height:16px;font-style:italic"></div>
+    <div id="srecLog" class="translog">${studentRecording.transcript.map(l=>`<div class="transline">${esc(l.text)}</div>`).join('')}</div>
+    ` : `<p class="help">Recording needs Chrome — everything else on this page still works.</p>`}
+  </div>`;
+}
+
 function renderStudentApp(){
   const st = studentState.student;
   const body = practice.active ? renderPractice(st) :
+    studentTab==='record' ? renderStudentRecordTab() :
     !st ? renderStudentImportPrompt() : renderStudentReport(st);
-  document.getElementById('app').innerHTML = renderStudentHeader() + `<div class="shell" style="padding-top:0">${body}</div>`;
+  document.getElementById('app').innerHTML = renderStudentHeader() + `
+    <div class="shell" style="padding-top:0">
+      <div class="tabs no-print">
+        <button class="tab ${studentTab==='progress'?'active':''}" onclick="practice.active=false;studentTab='progress';render()">My progress</button>
+        <button class="tab ${studentTab==='record'?'active':''}" onclick="practice.active=false;studentTab='record';render()">Record lesson ${srecActive?'<span class=\"livepip\"></span>':''}</button>
+      </div>
+      ${body}
+    </div>`;
 }
 
 /* ---------- main render ---------- */
