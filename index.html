@@ -210,6 +210,11 @@ table.sess td.notes{color:var(--text-2);max-width:280px}
 .recbtn{background:var(--bad);border-color:var(--bad);color:white}
 .recbtn:hover{opacity:.9}
 .recbtn.off{background:var(--surface);border-color:var(--border);color:var(--text)}
+.recbanner{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:9px;font-size:12.5px;font-weight:600;margin-bottom:10px}
+.recbanner .dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:0 0 auto;animation:pulse 1.6s ease-in-out infinite}
+.recbanner.live{background:var(--good-tint);color:var(--good)}
+.recbanner.stalled{background:var(--bad-tint);color:var(--bad)}
+.recbanner.off{background:var(--surface-2);color:var(--text-3);font-weight:500}
 .translog{display:flex;flex-direction:column;gap:4px;max-height:280px;overflow-y:auto;margin-top:6px}
 .transline{display:flex;align-items:flex-start;gap:8px;padding:7px 8px;border-radius:8px;border-left:3px solid transparent;font-size:12.5px}
 .transline.tag-repair{border-color:var(--warn);background:color-mix(in oklch, var(--warn) 8%, transparent)}
@@ -362,7 +367,7 @@ function transcriptFor(st, sessionId){
 }
 
 /* ---------- recording & heuristic tagging ---------- */
-let recognizer = null, recActive = false;
+let recognizer = null, recActive = false, recState = 'off', recFailStreak = 0, recRestartTimer = null, recStartedAt = 0;
 function speechSupported(){ return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
 function wordOverlap(a,b){
   const sa = new Set(norm(a).split(' ').filter(Boolean));
@@ -385,6 +390,14 @@ function toggleRecording(){ recActive ? stopRecording() : startRecording(); }
 function startRecording(){
   const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
   if(!speechSupported()){ toast('Speech recognition needs Chrome'); return; }
+  clearTimeout(recRestartTimer);
+  recFailStreak = 0;
+  launchRecognizer(st);
+  recActive = true;
+  recState = 'listening';
+  updateRecUI();
+}
+function launchRecognizer(st){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   recognizer = new SR();
   recognizer.continuous = true;
@@ -394,18 +407,38 @@ function startRecording(){
   recognizer.onerror = (e) => {
     if(e.error==='not-allowed' || e.error==='service-not-allowed'){
       toast('Microphone access was blocked — allow it in the browser to record');
-      stopRecording();
+      recState = 'off'; recActive = false; recognizer = null; updateRecUI();
       return;
     }
-    if(recActive) try{ recognizer.start(); }catch(err){}
+    // 'no-speech' and 'network' are routine and expected during quiet moments — onend handles the restart
   };
-  recognizer.onend = () => { if(recActive) try{ recognizer.start(); }catch(e){} };
-  recActive = true;
+  recognizer.onstart = () => { recStartedAt = Date.now(); };
+  recognizer.onend = () => {
+    if(!recActive) return;
+    const livedFor = Date.now() - recStartedAt;
+    recFailStreak = livedFor < 1500 ? recFailStreak + 1 : 0;
+    if(recFailStreak >= 4){
+      recState = 'stalled'; recActive = false;
+      updateRecUI();
+      return;
+    }
+    recRestartTimer = setTimeout(() => { if(recActive) launchRecognizer(activeStudentForLiveSession()); }, 350);
+  };
+  recStartedAt = Date.now();
   try{ recognizer.start(); }catch(e){}
+}
+function activeStudentForLiveSession(){
+  return state.liveSession ? state.students.find(s=>s.id===state.liveSession.studentId) : null;
+}
+function resumeRecording(){
+  const st = activeStudentForLiveSession(); if(!st) return;
+  recFailStreak = 0; recState = 'listening'; recActive = true;
+  launchRecognizer(st);
   updateRecUI();
 }
 function stopRecording(){
-  recActive = false;
+  recActive = false; recState = 'off';
+  clearTimeout(recRestartTimer);
   try{ recognizer && recognizer.stop(); }catch(e){}
   recognizer = null;
   updateRecUI();
@@ -413,12 +446,17 @@ function stopRecording(){
 function updateRecUI(){
   const btn = document.getElementById('recToggleBtn');
   if(btn){ btn.textContent = recActive ? 'Stop recording' : 'Start recording'; btn.classList.toggle('recbtn', recActive); btn.classList.toggle('off', !recActive); }
-  const status = document.getElementById('recStatus');
-  if(status) status.textContent = recActive ? 'Listening…' : '';
+  const banner = document.getElementById('recBanner');
+  if(banner){
+    if(recState==='listening') banner.outerHTML = `<div id="recBanner" class="recbanner live"><span class="dot"></span>Recording — listening</div>`;
+    else if(recState==='stalled') banner.outerHTML = `<div id="recBanner" class="recbanner stalled">Recording stopped unexpectedly<button class="btn btn-sm" style="margin-left:auto" onclick="resumeRecording()">Resume</button></div>`;
+    else banner.outerHTML = `<div id="recBanner" class="recbanner off">Not recording</div>`;
+  }
 }
 function handleRecResult(e){
   const live = state.liveSession; if(!live) return;
   const st = state.students.find(s=>s.id===live.studentId); if(!st) return;
+  recFailStreak = 0;
   let interim = '';
   for(let i=e.resultIndex;i<e.results.length;i++){
     const res = e.results[i];
@@ -767,12 +805,14 @@ function renderSession(st){
         </div>
         ${speechSupported() ? `
         <p class="help">Uses Chrome's built-in speech recognition — audio is sent to Google to produce text, nothing audio is stored by this app. Works best over speakers; if you're on headphones it can only hear you, not your student.</p>
+        <div id="recBanner" class="recbanner ${recState==='listening'?'live':recState==='stalled'?'stalled':'off'}">
+          ${recState==='listening' ? `<span class="dot"></span>Recording — listening` : recState==='stalled' ? `Recording stopped unexpectedly<button class="btn btn-sm" style="margin-left:auto" onclick="resumeRecording()">Resume</button>` : `Not recording`}
+        </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
           <button id="recToggleBtn" class="btn btn-sm ${recActive?'recbtn':'off'}" onclick="toggleRecording()">${recActive?'Stop recording':'Start recording'}</button>
           <select onchange="activeStudent().speechLang=this.value;save()">
             ${LANGOPTS.map(([code,label])=>`<option value="${code}" ${((st.speechLang||guessLangCode(st.lang))===code)?'selected':''}>${label}</option>`).join('')}
           </select>
-          <span id="recStatus" class="mini">${recActive?'Listening…':''}</span>
         </div>` : `<p class="help">Live transcription needs Chrome — everything else on this page still works.</p>`}
         <div id="interimLine" class="mini" style="min-height:16px;font-style:italic"></div>
         <div id="transcriptLog" class="translog">${(live.transcript||[]).filter(l=>!l.done).map(l=>transcriptLineHTML(live.sessionId,l)).join('')}</div>
