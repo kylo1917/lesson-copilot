@@ -292,6 +292,28 @@ function fmtDateFull(ts){ return new Date(ts).toLocaleDateString(undefined,{mont
 function colorFor(name){ let h=0; for(const c of name) h=(h*31+c.charCodeAt(0))>>>0; return COLORS[h%COLORS.length]; }
 function initials(name){ return name.trim().split(/\s+/).slice(0,2).map(w=>w[0]?.toUpperCase()||'').join('') || '?'; }
 
+/* ---------- theme ---------- */
+const THEME_KEY = 'lessoncopilot_theme_v1';
+function initTheme(){
+  const saved = localStorage.getItem(THEME_KEY);
+  if(saved==='light' || saved==='dark') document.documentElement.setAttribute('data-theme', saved);
+}
+function currentThemeIsDark(){
+  const forced = document.documentElement.getAttribute('data-theme');
+  if(forced) return forced==='dark';
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+function toggleTheme(){
+  const next = currentThemeIsDark() ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem(THEME_KEY, next);
+  render();
+}
+function themeToggleBtn(){
+  return `<button class="btn btn-ghost btn-sm" onclick="toggleTheme()" title="Switch theme">${currentThemeIsDark()?'☀️':'🌙'}</button>`;
+}
+initTheme();
+
 function load(){
   try{ const raw = localStorage.getItem(STORE_KEY); if(raw) return JSON.parse(raw); }catch(e){}
   return { students: [], activeStudentId: null, liveSession: null };
@@ -318,6 +340,18 @@ let state = load();
 let view = 'dashboard'; // 'dashboard' | 'session' | 'file'
 let showFullLog = false;
 let practice = { active:false, idx:0, order:[], revealed:false, typeFilter:'all' };
+document.addEventListener('keydown', (e)=>{
+  if(!practice.active || practice.finished) return;
+  const tag = document.activeElement?.tagName;
+  const typing = tag==='INPUT' || tag==='TEXTAREA';
+  if(!practice.revealed){
+    if(e.key===' ' && !typing){ e.preventDefault(); practiceReveal(); }
+    return;
+  }
+  if(e.key==='ArrowRight'){ e.preventDefault(); practiceGrade(true); }
+  else if(e.key==='ArrowLeft'){ e.preventDefault(); practiceGrade(false); }
+  else if(e.key===' ' && !typing){ e.preventDefault(); practiceGrade(true); }
+});
 let timerHandle = null;
 let pendingEnd = false;
 let reviewSessionId = null;
@@ -903,6 +937,7 @@ function renderHeader(){
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('importFile').click()" title="Import a student file">Import</button>
       <input type="file" id="importFile" accept="application/json" style="display:none" onchange="handleImport(this.files[0])">
       <button class="btn btn-ghost btn-sm" onclick="exportAll()" title="Back up everything">Backup all</button>
+      ${themeToggleBtn()}
     </div>
   </div>`;
 }
@@ -1234,6 +1269,11 @@ function streakIsLive(st){
   const yesterday = new Date(Date.now()-86400000).toDateString();
   return st.streak.lastDate===today || st.streak.lastDate===yesterday;
 }
+function streakAtRisk(st){
+  if(!st.streak || !st.streak.current) return false;
+  const yesterday = new Date(Date.now()-86400000).toDateString();
+  return st.streak.lastDate === yesterday;
+}
 
 /* ---------- pronunciation ---------- */
 function speakTerm(text, lang){
@@ -1401,7 +1441,9 @@ function renderPractice(st){
       <div class="flashctrl">
         <button class="btn btn-sm" style="background:var(--bad);border-color:var(--bad);color:white" onclick="practiceGrade(false)">Didn't know it</button>
         <button class="btn btn-sm btn-primary" onclick="practiceGrade(true)">Knew it</button>
-      </div>` : ''}
+      </div>
+      <div class="mini no-print">Keyboard: ← didn't know it · → / space knew it</div>` : `
+      <div class="mini no-print">Keyboard: space to reveal</div>`}
     </div>
   </div>`;
 }
@@ -1506,6 +1548,7 @@ function renderStudentHeader(){
     <div style="display:flex;gap:6px;margin-left:auto">
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('studentImportFile').click()">${studentState.student?'Import updated file':'Import your file'}</button>
       <input type="file" id="studentImportFile" accept="application/json" style="display:none" onchange="handleStudentImport(this.files[0])">
+      ${themeToggleBtn()}
     </div>
   </div>`;
 }
@@ -1546,6 +1589,15 @@ function renderStudentReport(st){
     `<span class="deltabadge delta-flat">steady</span>`;
   return `
   <div class="stack">
+    ${streakAtRisk(st) ? `
+    <div class="card" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-color:var(--warn)">
+      <span style="font-size:22px">🔥</span>
+      <div style="flex:1">
+        <div style="font-weight:600">Your ${st.streak.current}-day streak is at risk</div>
+        <div class="mini">Review a word or send today's recording to keep it alive.</div>
+      </div>
+      <button class="btn btn-sm btn-primary" ${st.glossary.length?'':'disabled'} onclick="startPracticeFor(studentModeStudent())">Practice now</button>
+    </div>` : ''}
     <div class="card herocard">
       <div class="sectionhead">
         <div style="display:flex;align-items:center;gap:12px">
