@@ -178,6 +178,9 @@ a{color:var(--accent-strong)}
 .flashcard .example{font-size:13px;color:var(--text-3);font-style:italic}
 .flashcard .tap{font-size:11.5px;color:var(--text-3)}
 .flashctrl{display:flex;gap:8px;align-items:center}
+.pronbox{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 14px;border-radius:11px;background:var(--surface-2);width:100%;max-width:320px}
+.pronrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
+.recdotsm{width:7px;height:7px;border-radius:50%;background:var(--bad);animation:pulse 1.2s ease-in-out infinite}
 
 .timerbox{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:100px;background:var(--bad-tint)}
 .timerbox .dot{width:7px;height:7px;border-radius:50%;background:var(--bad);animation:pulse 1.6s ease-in-out infinite}
@@ -1174,6 +1177,39 @@ function speakTerm(text, lang){
 }
 function shuffled(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
 
+/* ---------- self-recording pronunciation practice (ephemeral, never saved or sent) ---------- */
+let pronRecorder = null, pronChunks = [], pronBlobUrl = null, pronRecording = false;
+function micRecordingSupported(){ return !!(navigator.mediaDevices && window.MediaRecorder); }
+function resetPronRecording(){
+  if(pronRecorder && pronRecording){ try{ pronRecorder.stop(); }catch(e){} }
+  if(pronBlobUrl){ URL.revokeObjectURL(pronBlobUrl); pronBlobUrl = null; }
+  pronRecorder = null; pronChunks = []; pronRecording = false;
+}
+async function togglePronRecording(){
+  if(pronRecording){ try{ pronRecorder.stop(); }catch(e){} return; }
+  if(!micRecordingSupported()){ toast('Recording your own voice needs a modern browser'); return; }
+  if(pronBlobUrl){ URL.revokeObjectURL(pronBlobUrl); pronBlobUrl = null; }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+    pronChunks = [];
+    pronRecorder = new MediaRecorder(stream);
+    pronRecorder.ondataavailable = e => { if(e.data.size>0) pronChunks.push(e.data); };
+    pronRecorder.onstop = () => {
+      stream.getTracks().forEach(t=>t.stop());
+      const blob = new Blob(pronChunks, { type:'audio/webm' });
+      pronBlobUrl = blob.size ? URL.createObjectURL(blob) : null;
+      pronRecording = false;
+      render();
+    };
+    pronRecorder.start();
+    pronRecording = true;
+    render();
+  }catch(e){
+    toast('Microphone access was blocked — allow it to record yourself');
+  }
+}
+function playPronRecording(){ if(pronBlobUrl) new Audio(pronBlobUrl).play().catch(()=>{}); }
+
 function startPractice(id){
   startPracticeFor(state.students.find(s=>s.id===id));
 }
@@ -1192,6 +1228,7 @@ function rebuildPracticeQueue(){
   practice.pos = 0;
   practice.revealed = false;
   practice.typedAnswer = '';
+  resetPronRecording();
 }
 function practiceSetFilter(val){ practice.typeFilter=val; practice.pool='due'; practice.finished=false; rebuildPracticeQueue(); render(); }
 function practicePracticeAnyway(){ practice.pool='all'; practice.finished=false; practice.stats={right:0,wrong:0}; rebuildPracticeQueue(); render(); }
@@ -1210,6 +1247,7 @@ function practiceGrade(gotIt){
   practice.pos++;
   practice.revealed = false;
   practice.typedAnswer = '';
+  resetPronRecording();
   if(practice.pos >= practice.queue.length) practice.finished = true;
   render();
 }
@@ -1222,7 +1260,7 @@ function renderPractice(st){
           <option value="all" ${practice.typeFilter==='all'?'selected':''}>All types</option>
           ${Object.entries(GTYPES).map(([k,v])=>`<option value="${k}" ${practice.typeFilter===k?'selected':''}>${v.label}</option>`).join('')}
         </select>
-        <button class="btn btn-ghost btn-sm" onclick="practice.active=false;render()">Back to file</button>
+        <button class="btn btn-ghost btn-sm" onclick="resetPronRecording();practice.active=false;render()">Back to file</button>
       </div>
     </div>`;
 
@@ -1279,6 +1317,16 @@ function renderPractice(st){
           </div>
         `}
       </div>
+      ${practice.revealed && micRecordingSupported() ? `
+      <div class="pronbox">
+        <div class="eyebrow">Practice saying it</div>
+        <div class="pronrow">
+          <button class="btn btn-sm ${pronRecording?'recbtn':''}" onclick="togglePronRecording()">${pronRecording?'⏹ Stop':'🎙️ Record yourself'}</button>
+          ${pronRecording?'<span class="recdotsm"></span>':''}
+          ${pronBlobUrl?`<button class="btn btn-sm btn-primary" onclick="playPronRecording()">▶ Play yours</button>`:''}
+        </div>
+        <div class="mini">Nothing is saved — this is just for you, right now.</div>
+      </div>` : ''}
       ${practice.revealed ? `
       <div class="flashctrl">
         <button class="btn btn-sm" style="background:var(--bad);border-color:var(--bad);color:white" onclick="practiceGrade(false)">Didn't know it</button>
