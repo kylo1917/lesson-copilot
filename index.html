@@ -280,6 +280,49 @@ const TAGMETA = {
   watch:  {label:'Watchlist match'},
   filler: {label:'Filler / hesitation'}
 };
+const FUN_FACTS = [
+  "English has borrowed words from over 350 other languages — 'ketchup' comes from a Chinese word for fish sauce.",
+  "The longest word in most major dictionaries without repeating a letter is 'uncopyrightable' — 15 letters, all different.",
+  "Shakespeare is credited with inventing or popularizing over 1,700 English words, including 'eyeball' and 'lonely'.",
+  "There are roughly 7,000 languages spoken in the world today, but about 40% of them are at risk of disappearing.",
+  "The word 'set' has the most dictionary definitions of any English word — over 400 in the Oxford English Dictionary.",
+  "In Icelandic, new technology words are often invented from old roots instead of borrowed — a computer is 'tölva', literally 'number prophet'.",
+  "The dot over a lowercase 'i' or 'j' has a name: it's called a tittle.",
+  "Finnish has a word, 'kalsarikännit', that means getting drunk at home alone in your underwear with no intention of going out.",
+  "English is one of the few languages where the subject usually comes before the verb before the object (SVO) — most of the world's languages actually put the object before the verb.",
+  "'Dreamt' is one of the only English words that ends in the letters 'mt'.",
+  "Papua New Guinea has more languages than any other country — over 800.",
+  "The Spanish word 'esposas' means both 'wives' and 'handcuffs'.",
+  "In Japanese, there are different words for 'I' depending on your gender, age, and how formal the situation is.",
+  "The word 'alphabet' comes from the first two letters of the Greek alphabet: alpha and beta.",
+  "German can build enormous compound words on the fly — like 'Kummerspeck', literally 'grief bacon', meaning weight gained from emotional overeating.",
+  "The Hawaiian alphabet has only 13 letters.",
+  "The '-ing' sound doesn't exist as a single letter combination in most Romance languages, which is part of why it's tricky for many learners of English.",
+  "Idioms rarely translate directly — the English 'it's raining cats and dogs' becomes 'it's raining ropes' in French ('il pleut des cordes').",
+  "The word 'OK' is one of the most recognized words on Earth, understood in nearly every country regardless of native language.",
+  "In Welsh, the longest place name in Europe has 58 letters: Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch.",
+  "Mandarin Chinese has no verb tenses at all — time is shown with context words instead of changing the verb.",
+  "The word 'nice' originally meant 'foolish' or 'silly' in Middle English — its meaning has flipped almost completely.",
+  "Portuguese has a word, 'saudade', often described as untranslatable — a deep emotional longing for someone or something absent.",
+  "English 'goodbye' is a contraction of 'God be with ye'.",
+  "In French, you can't just say 'I am 30 years old' — grammatically you say 'I have 30 years' ('j'ai 30 ans').",
+  "The word 'set' aside, 'go' has the second-most definitions of any English word.",
+  "Arabic is written right to left, but numbers within Arabic text are still written left to right.",
+  "There's no word for 'blue' in some languages' oldest vocabularies — Ancient Greek famously never used a dedicated word for it.",
+  "Korean's writing system, Hangul, was designed in the 1440s by a king specifically to be easy to learn.",
+  "The English word 'robot' comes from the Czech word 'robota', meaning forced labor.",
+  "Collocations aren't random — native speakers say 'make a decision' but 'do homework', and there's rarely a logical reason why, just convention.",
+  "Phrasal verbs like 'give up' and 'give in' can have completely unrelated meanings despite sharing the same base verb.",
+  "The average adult native speaker knows around 20,000–35,000 words in their own language, but uses a much smaller set day to day."
+];
+let funFactIdx = null;
+function pickFunFact(){
+  if(FUN_FACTS.length<2){ funFactIdx=0; return; }
+  let next;
+  do{ next = Math.floor(Math.random()*FUN_FACTS.length); }while(next===funFactIdx);
+  funFactIdx = next;
+}
+if(funFactIdx===null) pickFunFact();
 
 function uid(){ return Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4); }
 function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -1573,6 +1616,12 @@ function renderStudentImportPrompt(){
         <p class="help">Import it to see your progress, review flagged corrections, and practice your vocabulary with flashcards.</p>
         <button class="btn btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();document.getElementById('studentImportFile').click()">Import your file</button>
       </div>
+      <div class="card dashcard" onclick="practice.active=false;studentTab='facts';render()">
+        <div class="bigicon" style="font-size:26px;margin-bottom:2px">💡</div>
+        <h3 style="font-size:16px">Just here to kill time?</h3>
+        <p class="help">Read a random fun fact about language while you wait for your next lesson.</p>
+        <button class="btn btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();practice.active=false;studentTab='facts';render()">See a fun fact</button>
+      </div>
     </div>
   </div>`;
 }
@@ -1826,16 +1875,26 @@ function renderStudentRecordTab(){
   </div>`;
 }
 
+function renderStudentFunFacts(){
+  return `
+  <div class="card" style="text-align:center;padding:34px 24px">
+    <div class="eyebrow">Fun fact</div>
+    <div style="font-size:19px;line-height:1.5;max-width:520px;margin:14px auto 20px">${esc(FUN_FACTS[funFactIdx])}</div>
+    <button class="btn btn-primary" onclick="pickFunFact();render()">Show me another</button>
+  </div>`;
+}
 function renderStudentApp(){
   const st = studentState.student;
   const body = practice.active ? renderPractice(st) :
     studentTab==='record' ? renderStudentRecordTab() :
+    studentTab==='facts' ? renderStudentFunFacts() :
     !st ? renderStudentImportPrompt() : renderStudentReport(st);
   document.getElementById('app').innerHTML = renderStudentHeader() + `
     <div class="shell" style="padding-top:0">
       <div class="tabs no-print">
         <button class="tab ${studentTab==='progress'?'active':''}" onclick="practice.active=false;studentTab='progress';render()">My progress</button>
         <button class="tab ${studentTab==='record'?'active':''}" onclick="practice.active=false;studentTab='record';render()">Record lesson ${srecActive?'<span class=\"livepip\"></span>':''}</button>
+        <button class="tab ${studentTab==='facts'?'active':''}" onclick="practice.active=false;studentTab='facts';render()">Fun facts</button>
       </div>
       ${body}
     </div>`;
