@@ -165,6 +165,10 @@ a{color:var(--accent-strong)}
 .delta-flat{background:var(--surface-2);color:var(--text-2)}
 
 .glossgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.dashgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
+.dashcard{cursor:pointer;display:flex;flex-direction:column;gap:10px;transition:border-color .15s,box-shadow .15s}
+.dashcard:hover{border-color:var(--text-3);box-shadow:var(--shadow-md)}
+.dashflags{display:flex;flex-wrap:wrap;gap:6px;min-height:22px}
 .glosscard{border:1px solid var(--border-soft);border-radius:11px;padding:12px 13px;display:flex;flex-direction:column;gap:6px}
 .glosscard .term{font-size:14px;font-weight:600}
 .glosscard .meaning{font-size:12.5px;color:var(--text-2)}
@@ -304,7 +308,7 @@ function saveStudentRecording(){ localStorage.setItem('lessoncopilot_recording_v
 let studentRecording = loadStudentRecording();
 
 let state = load();
-let view = 'session'; // 'session' | 'file'
+let view = 'dashboard'; // 'dashboard' | 'session' | 'file'
 let showFullLog = false;
 let practice = { active:false, idx:0, order:[], revealed:false, typeFilter:'all' };
 let timerHandle = null;
@@ -371,7 +375,7 @@ function toggleMinor(id, val){
   const s = state.students.find(x=>x.id===id); if(!s) return;
   s.isMinor = val; save(); render();
 }
-function selectStudent(id){ state.activeStudentId = id; save(); showFullLog=false; practice.active=false; render(); }
+function selectStudent(id){ state.activeStudentId = id; save(); showFullLog=false; practice.active=false; if(view==='dashboard') view='file'; render(); }
 function deleteStudent(id){
   const s = state.students.find(x=>x.id===id); if(!s) return;
   if(!confirm(`Delete ${s.name}'s entire file? This removes their mistake history and glossary permanently and can't be undone.`)) return;
@@ -807,6 +811,65 @@ function chartSVG(st){
     <text x="${padL}" y="${H+13}" font-size="9.5" fill="var(--text-3)">${esc(fmtDate(st.sessions[0].date))}</text>
     <text x="${W-padR}" y="${H+13}" text-anchor="end" font-size="9.5" fill="var(--text-3)">${esc(fmtDate(st.sessions[n-1].date))}</text>
   </svg>`;
+}
+
+/* ---------- render: dashboard ---------- */
+function studentUnreviewedCount(st){
+  return st.sessions.reduce((sum,sess)=> sum + (sess.transcript||[]).filter(l=>!l.done && l.tags.length).length, 0);
+}
+function studentNeedsAttentionCount(st){
+  return st.mistakes.filter(m=>m.occurrences.length>1).length;
+}
+function renderDashboard(){
+  const students = state.students;
+  const rows = students.map(st=>{
+    const prog = progression(st);
+    const needsAttn = studentNeedsAttentionCount(st);
+    const due = srsDueCount(st);
+    const unreviewed = studentUnreviewedCount(st);
+    const lastSession = st.sessions.length ? st.sessions[st.sessions.length-1].date : null;
+    const live = state.liveSession && state.liveSession.studentId===st.id;
+    return { st, prog, needsAttn, due, unreviewed, lastSession, live, flagScore: (needsAttn*10)+(unreviewed*5)+(live?1000:0) };
+  }).sort((a,b)=> b.flagScore-a.flagScore);
+
+  const totalNeedsAttn = rows.reduce((s,r)=>s+r.needsAttn,0);
+  const totalUnreviewed = rows.reduce((s,r)=>s+r.unreviewed,0);
+  const totalDue = rows.reduce((s,r)=>s+r.due,0);
+
+  return `
+  <div class="stack">
+    <div class="statrow">
+      <div class="stat"><div class="num">${students.length}</div><div class="lbl">Student${students.length===1?'':'s'}</div></div>
+      <div class="stat"><div class="num">${totalNeedsAttn}</div><div class="lbl">Recurring mistakes</div></div>
+      <div class="stat"><div class="num">${totalUnreviewed}</div><div class="lbl">Moments to review</div></div>
+      <div class="stat"><div class="num">${totalDue}</div><div class="lbl">Flashcards due</div></div>
+    </div>
+    <div class="dashgrid">
+      ${rows.map(r=>`
+        <div class="card dashcard" onclick="selectStudent('${r.st.id}')">
+          <div class="row">
+            <div style="display:flex;align-items:center;gap:9px;min-width:0">
+              <span class="avatar" style="background:${r.st.color};flex:0 0 auto">${esc(initials(r.st.name))}</span>
+              <div style="min-width:0">
+                <div style="font-weight:600;display:flex;align-items:center;gap:6px">${esc(r.st.name)} ${r.live?'<span class="livepip"></span>':''}</div>
+                <div class="mini">${esc(r.st.lang)} &middot; ${esc(r.st.level)}</div>
+              </div>
+            </div>
+            <div class="mono" style="font-size:17px;font-weight:600;flex:0 0 auto">${r.prog.current===null?'—':r.prog.current+'%'}</div>
+          </div>
+          <div class="dashflags">
+            ${r.needsAttn?`<span class="pill" style="background:var(--warn-tint);color:var(--warn)">${r.needsAttn} recurring</span>`:''}
+            ${r.unreviewed?`<span class="pill" style="background:var(--bad-tint);color:var(--bad)">${r.unreviewed} to review</span>`:''}
+            ${r.due?`<span class="pill" style="background:var(--accent-tint);color:var(--accent-ink)">${r.due} due</span>`:''}
+            ${!r.needsAttn && !r.unreviewed && !r.due?`<span class="mini">All caught up</span>`:''}
+          </div>
+          <div class="row" style="align-items:center">
+            <div class="mini">${r.lastSession?'Last session '+esc(fmtDate(r.lastSession)):'No sessions yet'}</div>
+            <button class="btn btn-sm no-print" onclick="event.stopPropagation();selectStudent('${r.st.id}');view='session';render()">Start session</button>
+          </div>
+        </div>`).join('')}
+    </div>
+  </div>`;
 }
 
 /* ---------- render: header ---------- */
@@ -1681,11 +1744,9 @@ function renderStudentApp(){
 function render(){
   if(STUDENT_MODE) return renderStudentApp();
   clearInterval(timerHandle); timerHandle=null;
-  const st = activeStudent();
-  const app = document.getElementById('app');
 
-  if(!st){
-    app.innerHTML = renderHeader() + `
+  if(state.students.length===0){
+    document.getElementById('app').innerHTML = renderHeader() + `
     <div class="shell" style="padding-top:0">
       <div class="emptystate">
         <h2>Set up your first student</h2>
@@ -1696,14 +1757,18 @@ function render(){
     return;
   }
 
-  const live = liveMistakeFor(st);
-  const body = practice.active ? renderPractice(st) :
+  const st = activeStudent();
+  const live = st ? liveMistakeFor(st) : null;
+  const body =
+    view==='dashboard' ? renderDashboard() :
+    practice.active ? renderPractice(st) :
     (view==='file' && reviewSessionId) ? renderReview(st) :
     view==='session' ? renderSession(st) : renderFile(st);
 
   document.getElementById('app').innerHTML = renderHeader() + `
     <div class="shell" style="padding-top:0">
       <div class="tabs no-print">
+        <button class="tab ${view==='dashboard'?'active':''}" onclick="practice.active=false;reviewSessionId=null;view='dashboard';render()">Dashboard</button>
         <button class="tab ${view==='session'?'active':''}" onclick="practice.active=false;reviewSessionId=null;view='session';render()">Live session ${live?'<span class=\"livepip\"></span>':''}</button>
         <button class="tab ${view==='file'?'active':''}" onclick="practice.active=false;reviewSessionId=null;view='file';render()">Student file</button>
       </div>
@@ -1717,6 +1782,5 @@ function render(){
 }
 
 if(state.students.length && !state.activeStudentId) state.activeStudentId = state.students[0].id;
-if(state.students.length===0) view='session';
 render();
 </script>
