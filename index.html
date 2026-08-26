@@ -324,6 +324,167 @@ function pickFunFact(){
 }
 if(funFactIdx===null) pickFunFact();
 
+/* ---------- phrasal verb / collocation / idiom library ---------- */
+const PHRASE_LIBRARY = [
+  {id:'pv01',type:'phrasal',term:'give up',theme:'motivation',meaning:'to stop trying or quit',example:"Don't give up on your English — you're improving fast."},
+  {id:'pv02',type:'phrasal',term:'give in',theme:'conflict',meaning:'to stop resisting; to submit',example:'After a long argument, she finally gave in.'},
+  {id:'pv03',type:'phrasal',term:'give away',theme:'communication',meaning:'to reveal something, or to give for free',example:'His nervous laugh gave away the secret.'},
+  {id:'pv04',type:'phrasal',term:'put off',theme:'time',meaning:'to postpone',example:'We had to put off the meeting until next week.'},
+  {id:'pv05',type:'phrasal',term:'put up with',theme:'relationships',meaning:'to tolerate',example:"I don't know how she puts up with his rudeness."},
+  {id:'pv06',type:'phrasal',term:'put together',theme:'work',meaning:'to assemble or organize',example:'They put together a great presentation.'},
+  {id:'pv07',type:'phrasal',term:'bring up',theme:'communication',meaning:'to mention a topic, or to raise a child',example:'She brought up an interesting point in the meeting.'},
+  {id:'pv08',type:'phrasal',term:'bring about',theme:'general',meaning:'to cause something to happen',example:'The new policy brought about a lot of change.'},
+  {id:'pv09',type:'phrasal',term:'break down',theme:'emotions',meaning:'to stop working, or to become upset',example:'My car broke down on the highway.'},
+  {id:'pv10',type:'phrasal',term:'break up',theme:'relationships',meaning:'to end a relationship',example:'They broke up after three years together.'},
+  {id:'pv11',type:'phrasal',term:'break out',theme:'general',meaning:'to start suddenly, like a fire or an argument',example:'A fire broke out in the old factory.'},
+  {id:'pv12',type:'phrasal',term:'carry on',theme:'work',meaning:'to continue',example:'Please carry on with your work.'},
+  {id:'pv13',type:'phrasal',term:'carry out',theme:'work',meaning:'to perform or execute a plan',example:'The team carried out the experiment successfully.'},
+  {id:'pv14',type:'phrasal',term:'come across',theme:'general',meaning:'to find by chance, or to seem a certain way',example:'I came across an old photo of us yesterday.'},
+  {id:'pv15',type:'phrasal',term:'come up with',theme:'work',meaning:'to think of an idea or plan',example:'She came up with a brilliant solution.'},
+  {id:'pv16',type:'phrasal',term:'cut down on',theme:'health',meaning:'to reduce the amount of something',example:"He's trying to cut down on sugar."},
+  {id:'pv17',type:'phrasal',term:'cut off',theme:'communication',meaning:'to interrupt or disconnect',example:'Sorry, the call got cut off.'},
+  {id:'pv18',type:'phrasal',term:'figure out',theme:'problem-solving',meaning:'to understand or solve something',example:"I can't figure out how this works."},
+  {id:'pv19',type:'phrasal',term:'fill in',theme:'work',meaning:'to complete a form, or to substitute for someone',example:'Please fill in the application form.'},
+  {id:'pv20',type:'phrasal',term:'find out',theme:'general',meaning:'to discover information',example:'We found out the truth too late.'},
+  {id:'pv21',type:'phrasal',term:'get along with',theme:'relationships',meaning:'to have a good relationship with someone',example:'I get along with all my coworkers.'},
+  {id:'pv22',type:'phrasal',term:'get over',theme:'emotions',meaning:'to recover from something difficult',example:'It took months to get over the breakup.'},
+  {id:'pv23',type:'phrasal',term:'get by',theme:'money',meaning:'to manage with limited resources',example:'We get by on a tight budget.'},
+  {id:'pv24',type:'phrasal',term:'go over',theme:'education',meaning:'to review something',example:"Let's go over the homework together."},
+  {id:'pv25',type:'phrasal',term:'hold on',theme:'communication',meaning:'to wait',example:"Hold on a second, I'll check."},
+  {id:'pv26',type:'phrasal',term:'hold up',theme:'time',meaning:'to delay, or to remain valid over time',example:"Sorry I'm late, traffic held me up."},
+  {id:'pv27',type:'phrasal',term:'look forward to',theme:'emotions',meaning:'to feel excited about something in the future',example:"I'm looking forward to the weekend."},
+  {id:'pv28',type:'phrasal',term:'look into',theme:'problem-solving',meaning:'to investigate',example:"We'll look into the issue right away."},
+  {id:'pv29',type:'phrasal',term:'look up to',theme:'relationships',meaning:'to admire and respect someone',example:'She really looks up to her older sister.'},
+  {id:'pv30',type:'phrasal',term:'make up',theme:'relationships',meaning:'to invent something, or to reconcile after a fight',example:'They had a fight but made up quickly.'},
+  {id:'pv31',type:'phrasal',term:'point out',theme:'communication',meaning:'to indicate or draw attention to something',example:'He pointed out a mistake in my report.'},
+  {id:'pv32',type:'phrasal',term:'run into',theme:'general',meaning:'to meet by chance, or to encounter a problem',example:'I ran into an old friend at the store.'},
+  {id:'pv33',type:'phrasal',term:'run out of',theme:'general',meaning:'to have no more of something',example:'We ran out of milk this morning.'},
+  {id:'pv34',type:'phrasal',term:'set up',theme:'work',meaning:'to arrange or establish something',example:'They set up a new office downtown.'},
+  {id:'pv35',type:'phrasal',term:'show up',theme:'time',meaning:'to arrive',example:'He showed up late again.'},
+  {id:'pv36',type:'phrasal',term:'sort out',theme:'problem-solving',meaning:'to resolve a problem or situation',example:"Let's sort out this misunderstanding."},
+  {id:'pv37',type:'phrasal',term:'take off',theme:'travel',meaning:"for a plane to leave the ground, or for something to become successful",example:'The plane took off on time.'},
+  {id:'pv38',type:'phrasal',term:'turn down',theme:'work',meaning:'to refuse or reject an offer',example:'She turned down the job offer.'},
+  {id:'pv39',type:'phrasal',term:'turn out',theme:'general',meaning:'to result in a particular way',example:'Everything turned out fine in the end.'},
+  {id:'pv40',type:'phrasal',term:'work out',theme:'health',meaning:'to exercise, or to be resolved successfully',example:'I work out three times a week.'},
+  {id:'co01',type:'collocation',term:'make a decision',theme:'problem-solving',meaning:'to decide',example:"It's time to make a decision."},
+  {id:'co02',type:'collocation',term:'make progress',theme:'work',meaning:'to improve or move forward',example:"You're making great progress in your lessons."},
+  {id:'co03',type:'collocation',term:'make an effort',theme:'motivation',meaning:'to try hard',example:'She made an effort to arrive on time.'},
+  {id:'co04',type:'collocation',term:'make a mistake',theme:'education',meaning:'to do something wrong',example:'Everyone makes mistakes while learning.'},
+  {id:'co05',type:'collocation',term:'do homework',theme:'education',meaning:'to complete schoolwork',example:'Did you do your homework last night?'},
+  {id:'co06',type:'collocation',term:'do business',theme:'work',meaning:'to trade or work commercially with someone',example:'They do business with several countries.'},
+  {id:'co07',type:'collocation',term:'do damage',theme:'general',meaning:'to cause harm',example:'The storm did a lot of damage.'},
+  {id:'co08',type:'collocation',term:'take a break',theme:'time',meaning:'to rest for a short period',example:"Let's take a break for ten minutes."},
+  {id:'co09',type:'collocation',term:'take a risk',theme:'problem-solving',meaning:'to do something with a chance of failure',example:'You have to take a risk sometimes.'},
+  {id:'co10',type:'collocation',term:'take responsibility',theme:'work',meaning:'to accept accountability for something',example:'He took responsibility for the mistake.'},
+  {id:'co11',type:'collocation',term:'have a conversation',theme:'communication',meaning:'to talk with someone',example:'We had a long conversation about the future.'},
+  {id:'co12',type:'collocation',term:'have an opinion',theme:'communication',meaning:'to hold a personal view',example:'Everyone has an opinion on this topic.'},
+  {id:'co13',type:'collocation',term:'pay attention',theme:'education',meaning:'to concentrate on something',example:'Please pay attention during the lesson.'},
+  {id:'co14',type:'collocation',term:'pay a compliment',theme:'relationships',meaning:'to say something nice about someone',example:'He paid her a nice compliment.'},
+  {id:'co15',type:'collocation',term:'save money',theme:'money',meaning:'to keep money instead of spending it',example:"We're trying to save money this year."},
+  {id:'co16',type:'collocation',term:'spend time',theme:'time',meaning:'to use time doing something',example:'I like to spend time with my family.'},
+  {id:'co17',type:'collocation',term:'catch a cold',theme:'health',meaning:'to become sick with a cold',example:'I caught a cold last week.'},
+  {id:'co18',type:'collocation',term:'keep a promise',theme:'relationships',meaning:'to do what you said you would do',example:'She always keeps her promises.'},
+  {id:'co19',type:'collocation',term:'break a promise',theme:'relationships',meaning:'to fail to do what you said you would do',example:'He broke his promise again.'},
+  {id:'co20',type:'collocation',term:'reach an agreement',theme:'work',meaning:'to come to a mutual decision',example:'The two sides finally reached an agreement.'},
+  {id:'co21',type:'collocation',term:'raise a question',theme:'communication',meaning:'to bring up a point to discuss',example:'That raises an important question.'},
+  {id:'co22',type:'collocation',term:'set a goal',theme:'motivation',meaning:'to decide on something you want to achieve',example:'Set a realistic goal for this month.'},
+  {id:'co23',type:'collocation',term:'meet a deadline',theme:'work',meaning:'to finish something by the required time',example:'We need to meet the deadline on Friday.'},
+  {id:'co24',type:'collocation',term:'run a business',theme:'work',meaning:'to manage a company',example:'She runs a small business from home.'},
+  {id:'co25',type:'collocation',term:'lose your temper',theme:'emotions',meaning:'to become suddenly angry',example:'Try not to lose your temper in meetings.'},
+  {id:'idm01',type:'idiom',term:'break the ice',theme:'communication',meaning:'to ease tension or start a conversation',example:'He told a joke to break the ice.'},
+  {id:'idm02',type:'idiom',term:'hit the books',theme:'education',meaning:'to study hard',example:'I need to hit the books before the exam.'},
+  {id:'idm03',type:'idiom',term:'once in a blue moon',theme:'time',meaning:'very rarely',example:'We only eat out once in a blue moon.'},
+  {id:'idm04',type:'idiom',term:'under the weather',theme:'health',meaning:'feeling slightly ill',example:"I'm feeling a bit under the weather today."},
+  {id:'idm05',type:'idiom',term:'cost an arm and a leg',theme:'money',meaning:'to be very expensive',example:'That new phone cost an arm and a leg.'},
+  {id:'idm06',type:'idiom',term:'hit the nail on the head',theme:'communication',meaning:'to describe exactly what is true',example:'You hit the nail on the head with that comment.'},
+  {id:'idm07',type:'idiom',term:'piece of cake',theme:'general',meaning:'something very easy',example:'The test was a piece of cake.'},
+  {id:'idm08',type:'idiom',term:'on the same page',theme:'work',meaning:'in agreement or having the same understanding',example:"Let's make sure we're on the same page before we start."},
+  {id:'idm09',type:'idiom',term:'let the cat out of the bag',theme:'communication',meaning:'to reveal a secret, usually by accident',example:'She let the cat out of the bag about the surprise party.'},
+  {id:'idm10',type:'idiom',term:'bite the bullet',theme:'motivation',meaning:'to face something difficult or unpleasant bravely',example:"I'll just bite the bullet and call the dentist."},
+  {id:'idm11',type:'idiom',term:'speak of the devil',theme:'general',meaning:'said when someone appears right after being mentioned',example:'Speak of the devil — here he comes now.'},
+  {id:'idm12',type:'idiom',term:'call it a day',theme:'work',meaning:'to stop working for the day',example:"Let's call it a day, we've done enough."},
+  {id:'idm13',type:'idiom',term:'get cold feet',theme:'emotions',meaning:'to become nervous about doing something you planned',example:'He got cold feet before the wedding.'},
+  {id:'idm14',type:'idiom',term:'see eye to eye',theme:'relationships',meaning:'to agree with someone',example:'They finally saw eye to eye on the plan.'},
+  {id:'idm15',type:'idiom',term:'burn the midnight oil',theme:'work',meaning:'to work late into the night',example:"She's been burning the midnight oil to finish the project."},
+  {id:'idm16',type:'idiom',term:'throw in the towel',theme:'motivation',meaning:'to give up',example:'After three attempts, he threw in the towel.'},
+  {id:'idm17',type:'idiom',term:'spill the beans',theme:'communication',meaning:'to reveal secret information',example:"Don't spill the beans about the surprise!"},
+  {id:'idm18',type:'idiom',term:'a blessing in disguise',theme:'general',meaning:'something that seems bad at first but turns out well',example:'Losing that job was a blessing in disguise.'},
+  {id:'idm19',type:'idiom',term:'hit the road',theme:'travel',meaning:'to leave or start a journey',example:"It's getting late, let's hit the road."},
+  {id:'idm20',type:'idiom',term:'by the book',theme:'work',meaning:'strictly following the rules',example:'The manager always does things by the book.'}
+];
+let suggestPicks = {};
+let libraryQuery = '';
+let libraryTypeFilter = 'all';
+function computeSuggestions(st){
+  const have = new Set(st.glossary.map(g=>norm(g.term)));
+  const themes = new Set();
+  st.glossary.forEach(g=>{
+    const match = PHRASE_LIBRARY.find(p=>norm(p.term)===norm(g.term));
+    if(match) themes.add(match.theme);
+  });
+  const pool = PHRASE_LIBRARY.filter(p=>!have.has(norm(p.term)));
+  const themed = themes.size ? pool.filter(p=>themes.has(p.theme)) : [];
+  const themedSet = new Set(themed);
+  const rest = pool.filter(p=>!themedSet.has(p));
+  const ordered = shuffled(themed).concat(shuffled(rest));
+  suggestPicks[st.id] = ordered.slice(0,6).map(p=>p.id);
+}
+function suggestionsFor(st){
+  if(!suggestPicks[st.id]) computeSuggestions(st);
+  const have = new Set(st.glossary.map(g=>norm(g.term)));
+  return suggestPicks[st.id]
+    .map(id=>PHRASE_LIBRARY.find(p=>p.id===id))
+    .filter(p=>p && !have.has(norm(p.term)));
+}
+function refreshSuggestions(id){
+  const st = state.students.find(s=>s.id===id); if(!st) return;
+  computeSuggestions(st);
+  render();
+}
+function addGlossaryFromLibrary(studentId, libId){
+  const st = state.students.find(s=>s.id===studentId); if(!st) return;
+  const entry = PHRASE_LIBRARY.find(p=>p.id===libId); if(!entry) return;
+  addGlossary(st, null, entry.term, entry.type, entry.meaning, entry.example);
+  save(); render();
+  toast(`Added "${entry.term}" to ${st.name}'s glossary`);
+}
+function renderSuggestPanel(st){
+  const q = norm(libraryQuery);
+  const results = q ? PHRASE_LIBRARY.filter(p=>
+      (libraryTypeFilter==='all'||p.type===libraryTypeFilter) &&
+      (norm(p.term).includes(q) || norm(p.meaning).includes(q) || norm(p.theme).includes(q))
+    ).slice(0,20)
+    : suggestionsFor(st).filter(p=>libraryTypeFilter==='all'||p.type===libraryTypeFilter);
+  return `
+  <div class="card no-print">
+    <div class="sectionhead">
+      <h3>Suggest vocabulary</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select onchange="libraryTypeFilter=this.value;render()">
+          <option value="all" ${libraryTypeFilter==='all'?'selected':''}>All types</option>
+          <option value="phrasal" ${libraryTypeFilter==='phrasal'?'selected':''}>Phrasal verbs</option>
+          <option value="collocation" ${libraryTypeFilter==='collocation'?'selected':''}>Collocations</option>
+          <option value="idiom" ${libraryTypeFilter==='idiom'?'selected':''}>Idioms</option>
+        </select>
+        ${!q?`<button class="btn btn-ghost btn-sm" onclick="refreshSuggestions('${st.id}')">Shuffle</button>`:''}
+      </div>
+    </div>
+    <input type="text" placeholder="Search phrasal verbs, collocations, idioms…" value="${esc(libraryQuery)}" oninput="libraryQuery=this.value;render()" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);margin-bottom:10px">
+    ${!q ? `<div class="mini" style="margin-bottom:8px">Based on themes already in ${esc(st.name)}'s glossary — add any of these with one click</div>` : ''}
+    ${results.length ? `<div class="stack" style="gap:8px">${results.map(p=>{
+      const meta = GTYPES[p.type];
+      return `<div class="quietrow" style="align-items:flex-start;gap:10px">
+        <span class="pill" style="background:var(${meta.t});color:var(${meta.v});flex:0 0 auto">${meta.label}</span>
+        <div style="flex:1">
+          <div style="font-weight:600">${esc(p.term)}</div>
+          <div class="mini">${esc(p.meaning)}</div>
+        </div>
+        <button class="btn btn-sm btn-primary" style="flex:0 0 auto" onclick="addGlossaryFromLibrary('${st.id}','${p.id}')">+ Add</button>
+      </div>`;
+    }).join('')}</div>` : `<div class="help">${q?'No matches — try a different search.':'No suggestions right now — try shuffling or search the library above.'}</div>`}
+  </div>`;
+}
+
 function uid(){ return Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4); }
 function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function jsAttr(s){ return esc(String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")); }
@@ -1225,6 +1386,8 @@ function renderFile(st){
         </div>`;
       }).join('') : `<div class="help">Nothing taught yet — vocabulary and constructs you add during sessions collect here, grouped by type.</div>`}
     </div>
+
+    ${renderSuggestPanel(st)}
 
     <div class="card no-print">
       <div class="sectionhead">
