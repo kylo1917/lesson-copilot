@@ -269,6 +269,7 @@ const TAGMETA = {
 
 function uid(){ return Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4); }
 function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function jsAttr(s){ return esc(String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")); }
 function norm(s){ return String(s||'').trim().toLowerCase().replace(/\s+/g,' '); }
 function clamp(n,a,b){ return Math.max(a,Math.min(b,n)); }
 function avg(arr){ return arr.reduce((a,b)=>a+b,0)/arr.length; }
@@ -886,7 +887,7 @@ function renderSession(st){
         ${(live.transcript||[]).filter(l=>!l.done && !isHighSignal(l)).length ? `<button class="linkbtn muted no-print" style="margin-top:4px" onclick="transcriptShowAll=!transcriptShowAll;render()">${transcriptShowAll?'Hide low-signal lines':`Show everything (<span id="hiddenCount">${(live.transcript||[]).filter(l=>!l.done && !isHighSignal(l)).length}</span> hidden)`}</button>` : ''}
         <div class="divider"></div>
         <div class="eyebrow" style="margin-bottom:6px">Watchlist — highlight these words when heard</div>
-        <div class="watchchips" style="margin-bottom:8px">${watchlist.map(w=>`<span class="watchchip">${esc(w)}<button class="xbtn" style="margin-left:0" onclick="removeWatchTerm('${esc(w).replace(/'/g,"\\'")}')">×</button></span>`).join('') || '<span class="mini">None yet — add terms you are actively working on, like "ser/estar" or "subjunctive"</span>'}</div>
+        <div class="watchchips" style="margin-bottom:8px">${watchlist.map(w=>`<span class="watchchip">${esc(w)}<button class="xbtn" style="margin-left:0" onclick="removeWatchTerm('${jsAttr(w)}')">×</button></span>`).join('') || '<span class="mini">None yet — add terms you are actively working on, like "ser/estar" or "subjunctive"</span>'}</div>
         <div style="display:flex;gap:6px">
           <input id="watchInput" placeholder="e.g. subjunctive" style="flex:1 1 auto;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter')addWatchTerm()">
           <button class="btn btn-sm" onclick="addWatchTerm()">Add</button>
@@ -1065,7 +1066,7 @@ function renderFile(st){
           <div class="eyebrow" style="margin-bottom:8px;color:var(${meta.v})">${meta.label} &middot; ${items.length}</div>
           <div class="glossgrid">${items.map(g=>`
             <div class="glosscard">
-              <div class="row"><span class="term">${esc(g.term)}</span><span class="mini mono no-print">×${g.occurrences.length}</span></div>
+              <div class="row"><span class="term">${esc(g.term)} <button class="linkbtn no-print" style="font-size:14px;padding:0 2px" title="Hear pronunciation" onclick="speakTerm('${jsAttr(g.term)}','${st.speechLang||guessLangCode(st.lang)}')">🔊</button></span><span class="mini mono no-print">×${g.occurrences.length}</span></div>
               ${g.meaning?`<div class="meaning">${esc(g.meaning)}</div>`:''}
               ${g.example?`<div class="example">"${esc(g.example)}"</div>`:''}
             </div>`).join('')}
@@ -1143,6 +1144,34 @@ function srsGrade(g, gotIt){
 function srsDueCount(st){ const now=Date.now(); return st.glossary.filter(g=>srsOf(g).nextReview<=now).length; }
 function srsMasteredCount(st){ return st.glossary.filter(g=>srsOf(g).box>=4).length; }
 function currentPracticeStudent(){ return STUDENT_MODE ? studentState.student : activeStudent(); }
+
+/* ---------- practice streaks ---------- */
+function bumpStreak(st){
+  st.streak = st.streak || { current:0, longest:0, lastDate:null };
+  const today = new Date().toDateString();
+  if(st.streak.lastDate === today) return;
+  const yesterday = new Date(Date.now()-86400000).toDateString();
+  st.streak.current = (st.streak.lastDate === yesterday) ? st.streak.current+1 : 1;
+  st.streak.longest = Math.max(st.streak.longest, st.streak.current);
+  st.streak.lastDate = today;
+}
+function streakIsLive(st){
+  if(!st.streak || !st.streak.current) return false;
+  const today = new Date().toDateString();
+  const yesterday = new Date(Date.now()-86400000).toDateString();
+  return st.streak.lastDate===today || st.streak.lastDate===yesterday;
+}
+
+/* ---------- pronunciation ---------- */
+function speakTerm(text, lang){
+  if(!window.speechSynthesis) return;
+  try{
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = lang || 'en-US';
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
 function shuffled(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
 
 function startPractice(id){
@@ -1176,6 +1205,7 @@ function practiceGrade(gotIt){
   const st = currentPracticeStudent(); if(!st) return;
   const g = st.glossary.find(x=>x.id===practice.queue[practice.pos]);
   if(g){ srsGrade(g, gotIt); practice.stats[gotIt?'right':'wrong']++; }
+  bumpStreak(st);
   if(STUDENT_MODE) saveStudentState(); else save();
   practice.pos++;
   practice.revealed = false;
@@ -1225,14 +1255,19 @@ function renderPractice(st){
   const meta = GTYPES[g.type];
   const box = srsOf(g).box;
   const stageLabel = box===0 ? 'New' : box>=4 ? 'Mastered' : 'Learning';
+  const speechLang = st.speechLang || guessLangCode(st.lang);
+  const streakLabel = streakIsLive(st) && st.streak.current>1 ? ` · 🔥 ${st.streak.current} day streak` : '';
   return `
   <div class="card">
     ${head}
     <div class="flash">
-      <div class="mini">${practice.pos+1} of ${practice.queue.length} · ${stageLabel}</div>
+      <div class="mini">${practice.pos+1} of ${practice.queue.length} · ${stageLabel}${streakLabel}</div>
       <div class="flashcard">
         <span class="pill" style="background:var(${meta.t});color:var(${meta.v})">${meta.label}</span>
-        <div class="term">${esc(g.term)}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="term">${esc(g.term)}</div>
+          <button class="linkbtn" style="font-size:18px;padding:2px 6px" title="Hear pronunciation" onclick="speakTerm('${jsAttr(g.term)}','${speechLang}')">🔊</button>
+        </div>
         ${!practice.revealed ? `
           <input id="practiceTyped" placeholder="Type what you think it means (optional)" style="width:100%;max-width:280px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);text-align:center" onkeydown="if(event.key==='Enter')practiceReveal()">
           <button class="btn btn-sm btn-primary" onclick="practiceReveal()">Reveal</button>
@@ -1388,6 +1423,7 @@ function renderStudentReport(st){
         <div class="stat"><div class="num">${prog.current===null?'—':prog.current+'%'}</div><div class="lbl">Current average</div></div>
         <div class="stat"><div class="num">${st.glossary.length}</div><div class="lbl">Terms in glossary</div></div>
         <div class="stat"><div class="num">${srsMasteredCount(st)}</div><div class="lbl">Words mastered</div></div>
+        <div class="stat"><div class="num">${streakIsLive(st)?st.streak.current:0}${streakIsLive(st)&&st.streak.current?' 🔥':''}</div><div class="lbl">Day streak</div></div>
       </div>
       <div class="chart-wrap">${chartSVG(st)}</div>
     </div>
@@ -1417,7 +1453,7 @@ function renderStudentReport(st){
           <div class="eyebrow" style="margin-bottom:8px;color:var(${meta.v})">${meta.label} &middot; ${items.length}</div>
           <div class="glossgrid">${items.map(g=>`
             <div class="glosscard">
-              <div class="term">${esc(g.term)}</div>
+              <div class="term">${esc(g.term)} <button class="linkbtn no-print" style="font-size:14px;padding:0 2px" title="Hear pronunciation" onclick="speakTerm('${jsAttr(g.term)}','${st.speechLang||guessLangCode(st.lang)}')">🔊</button></div>
               ${g.meaning?`<div class="meaning">${esc(g.meaning)}</div>`:''}
               ${g.example?`<div class="example">"${esc(g.example)}"</div>`:''}
             </div>`).join('')}
