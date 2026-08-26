@@ -1453,11 +1453,22 @@ function discardStudentRecording(){
   saveStudentRecording();
   render();
 }
-function sendStudentRecording(){
+async function sendStudentRecording(){
   if(!studentRecording.transcript.length){ toast('Nothing recorded yet'); return; }
   const data = JSON.stringify({ kind:'lesson-copilot-recording', recordedAt: studentRecording.startedAt, studentName: studentState.student?.name||'', consentConfirmedAt: studentRecording.consentConfirmedAt||null, transcript: studentRecording.transcript }, null, 2);
   const prefix = studentState.student?.name ? slugify(studentState.student.name)+'-' : '';
-  downloadFile(prefix+'recording-'+new Date(studentRecording.startedAt||Date.now()).toISOString().slice(0,10)+'.json', data);
+  const filename = prefix+'recording-'+new Date(studentRecording.startedAt||Date.now()).toISOString().slice(0,10)+'.json';
+  const file = new File([data], filename, { type:'application/json' });
+  if(navigator.canShare && navigator.canShare({ files:[file] })){
+    try{
+      await navigator.share({ files:[file], title:'Lesson recording', text:'Here’s my Second Chair lesson recording for you to import.' });
+      toast('Sent!');
+      return;
+    }catch(e){
+      if(e && e.name==='AbortError') return;
+    }
+  }
+  downloadFile(filename, data);
 }
 function renderStudentRecordTab(){
   const hasData = studentRecording.transcript.length>0;
@@ -1471,7 +1482,7 @@ function renderStudentRecordTab(){
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
       <button id="srecToggleBtn" class="btn ${srecActive?'recbtn':'off'}" onclick="toggleStudentRecording()">${srecActive?'Stop recording':'Start recording'}</button>
-      ${hasData ? `<button class="btn btn-primary" onclick="sendStudentRecording()">Save recording to send</button>` : ''}
+      ${hasData ? `<button class="btn btn-primary" onclick="sendStudentRecording()">Send to your tutor</button>` : ''}
       ${hasData ? `<button class="btn btn-ghost" onclick="discardStudentRecording()">Clear</button>` : ''}
     </div>
     ${studentRecording.consentConfirmedAt ? `<div class="mini" style="margin-bottom:6px">✓ Recording consent confirmed</div>` : ''}
