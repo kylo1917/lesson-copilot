@@ -159,6 +159,9 @@ a{color:var(--accent-strong)}
 .stat{flex:1 1 120px;background:var(--surface-2);border-radius:11px;padding:12px 14px}
 .stat .num{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;line-height:1.1}
 .stat .lbl{font-size:11px;color:var(--text-2);margin-top:2px}
+.stat-hero{padding:16px 16px}
+.stat-hero .num{font-size:30px}
+.stat-hero .lbl{font-size:12px}
 .deltabadge{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:100px}
 .delta-up{background:var(--good-tint);color:var(--good)}
 .delta-down{background:var(--bad-tint);color:var(--bad)}
@@ -784,11 +787,11 @@ function progression(st){
 }
 
 /* ---------- charts ---------- */
-function chartSVG(st){
+function chartSVG(st, H=170){
   const { ratings, cum } = progression(st);
   const n = ratings.length;
   if(n===0) return '<div class="help" style="padding:30px 0;text-align:center">No sessions yet — the progression chart fills in after your first saved session.</div>';
-  const W=640,H=170,padL=30,padR=10,padT=10,padB=22;
+  const W=640,padL=30,padR=10,padT=10,padB=22;
   const xStep = n>1 ? (W-padL-padR)/(n-1) : 0;
   const xFor = i => padL + i*xStep;
   const yFor = v => padT + (100-v)/100*(H-padT-padB);
@@ -1517,12 +1520,16 @@ function renderStudentReport(st){
   const groups = {};
   Object.keys(GTYPES).forEach(k=>groups[k]=[]);
   st.glossary.forEach(g=>groups[g.type]?.push(g));
+  const trendBadge = prog.delta===null ? `<span class="mini">First session</span>` :
+    prog.delta>0 ? `<span class="deltabadge delta-up">▲ +${prog.delta}%</span>` :
+    prog.delta<0 ? `<span class="deltabadge delta-down">▼ ${prog.delta}%</span>` :
+    `<span class="deltabadge delta-flat">steady</span>`;
   return `
   <div class="stack">
     <div class="card">
       <div class="sectionhead">
         <div>
-          <h3 style="font-size:16px">Hi ${esc(st.name)} — here's your progress</h3>
+          <h3 style="font-size:19px">Hi ${esc(st.name)} — here's your progress</h3>
           <div class="mini">${esc(st.lang)} &middot; ${esc(st.level)} &middot; ${st.sessions.length} session${st.sessions.length===1?'':'s'}</div>
         </div>
         <div class="no-print" style="display:flex;flex-wrap:wrap;gap:8px">
@@ -1530,30 +1537,43 @@ function renderStudentReport(st){
           <button class="btn btn-sm btn-primary" ${st.glossary.length?'':'disabled'} onclick="startPracticeFor(studentModeStudent())">Practice flashcards${st.glossary.length?` (${srsDueCount(st)} due)`:''}</button>
         </div>
       </div>
-      <div class="statrow" style="margin-bottom:14px">
-        <div class="stat"><div class="num">${prog.current===null?'—':prog.current+'%'}</div><div class="lbl">Current average</div></div>
-        <div class="stat"><div class="num">${st.glossary.length}</div><div class="lbl">Terms in glossary</div></div>
-        <div class="stat"><div class="num">${srsMasteredCount(st)}</div><div class="lbl">Words mastered</div></div>
-        <div class="stat"><div class="num">${streakIsLive(st)?st.streak.current:0}${streakIsLive(st)&&st.streak.current?' 🔥':''}</div><div class="lbl">Day streak</div></div>
+      <div class="statrow" style="margin-bottom:18px">
+        <div class="stat stat-hero"><div class="num">${prog.current===null?'—':prog.current+'%'}</div><div class="lbl">Current average</div></div>
+        <div class="stat stat-hero"><div class="num" style="font-size:20px;padding-top:4px">${trendBadge}</div><div class="lbl">vs your recent average</div></div>
+        <div class="stat stat-hero"><div class="num">${srsMasteredCount(st)}</div><div class="lbl">Words mastered</div></div>
+        <div class="stat stat-hero"><div class="num">${streakIsLive(st)?st.streak.current:0}${streakIsLive(st)&&st.streak.current?' 🔥':''}</div><div class="lbl">Day streak</div></div>
       </div>
-      <div class="chart-wrap">${chartSVG(st)}</div>
+      <div class="chart-wrap">${chartSVG(st, 260)}</div>
     </div>
 
-    <div class="card">
-      <div class="sectionhead"><h3>Things to keep working on</h3><span class="mini mono">${needsAttention.length}</span></div>
-      ${needsAttention.length ? `<div class="stack" style="gap:8px">${needsAttention.map(m=>{
-        const c = CATS[m.category];
-        return `<div class="mistakecard flagged">
-          <div class="row"><span class="pill" style="background:var(${c.t});color:var(${c.v})">${c.label}</span><span class="count">×${m.occurrences.length}</span></div>
-          <div class="txt">${esc(m.text)}</div>
-          ${m.correction?`<div class="fix">→ ${esc(m.correction)}</div>`:''}
-        </div>`;
-      }).join('')}</div>` : `<div class="help">Nothing repeat-flagged — nice work.</div>`}
-      ${singles.length ? `<div style="margin-top:12px">
-        <button class="btn btn-ghost btn-sm no-print" onclick="showFullLog=!showFullLog;render()">${showFullLog?'Hide':'Show'} ${singles.length} more note${singles.length===1?'':'s'}</button>
-        ${showFullLog ? `<div class="quietlist" style="margin-top:8px">${singles.map(m=>`
-          <div class="quietrow"><span>${esc(m.text)}</span>${m.correction?`<span class="mini">→ ${esc(m.correction)}</span>`:''}</div>`).join('')}</div>` : ''}
-      </div>` : ''}
+    <div class="grid2">
+      <div class="card">
+        <div class="sectionhead"><h3>Things to keep working on</h3><span class="mini mono">${needsAttention.length}</span></div>
+        ${needsAttention.length ? `<div class="stack" style="gap:8px">${needsAttention.map(m=>{
+          const c = CATS[m.category];
+          return `<div class="mistakecard flagged">
+            <div class="row"><span class="pill" style="background:var(${c.t});color:var(${c.v})">${c.label}</span><span class="count">×${m.occurrences.length}</span></div>
+            <div class="txt">${esc(m.text)}</div>
+            ${m.correction?`<div class="fix">→ ${esc(m.correction)}</div>`:''}
+          </div>`;
+        }).join('')}</div>` : `<div class="help">Nothing repeat-flagged — nice work.</div>`}
+        ${singles.length ? `<div style="margin-top:12px">
+          <button class="btn btn-ghost btn-sm no-print" onclick="showFullLog=!showFullLog;render()">${showFullLog?'Hide':'Show'} ${singles.length} more note${singles.length===1?'':'s'}</button>
+          ${showFullLog ? `<div class="quietlist" style="margin-top:8px">${singles.map(m=>`
+            <div class="quietrow"><span>${esc(m.text)}</span>${m.correction?`<span class="mini">→ ${esc(m.correction)}</span>`:''}</div>`).join('')}</div>` : ''}
+        </div>` : ''}
+      </div>
+
+      <div class="card">
+        <div class="sectionhead"><h3>Recent sessions</h3></div>
+        ${st.sessions.length ? `<div class="stack" style="gap:8px">${st.sessions.slice().reverse().slice(0,6).map(s=>`
+          <div class="quietrow" style="align-items:flex-start;flex-direction:column;gap:2px;padding:8px 2px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;width:100%;gap:10px">
+              <span style="font-weight:600">${esc(fmtDateFull(s.date))}</span><span class="mono">${s.rating}%</span>
+            </div>
+            <div class="mini">${s.durationMin}m${s.notes?' · '+esc(s.notes):''}</div>
+          </div>`).join('')}</div>` : `<div class="help">No sessions yet.</div>`}
+      </div>
     </div>
 
     <div class="card">
