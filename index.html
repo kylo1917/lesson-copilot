@@ -306,6 +306,7 @@ let practice = { active:false, idx:0, order:[], revealed:false, typeFilter:'all'
 let timerHandle = null;
 let pendingEnd = false;
 let reviewSessionId = null;
+let transcriptShowAll = false;
 
 function activeStudent(){ return state.students.find(s=>s.id===state.activeStudentId) || null; }
 
@@ -401,9 +402,12 @@ function wordOverlap(a,b){
   return inter/Math.max(sa.size,sb.size);
 }
 const FILLER_RE = /\b(um+|uh+|erm+|like|you know|i mean|sort of|kind of)\b/i;
+const BACKCHANNEL_RE = /^(yeah|yep|yup|okay|ok|alright|all right|right|hmm+|mm+[\s-]?hm+|uh[\s-]?huh|got it|i see|cool|nice|sure|gotcha|great|good|exactly|correct)[.!,?]*$/i;
+const HIGH_SIGNAL_TAGS = new Set(['repair','watch']);
+function isHighSignal(line){ return line.tags.some(t=>HIGH_SIGNAL_TAGS.has(t)); }
 function tagLine(st, text, prevText){
   const tags = [];
-  if(FILLER_RE.test(text)) tags.push('filler');
+  if(FILLER_RE.test(text) || BACKCHANNEL_RE.test(text.trim())) tags.push('filler');
   if(prevText && norm(prevText)!==norm(text) && wordOverlap(prevText,text) >= 0.5) tags.push('repair');
   const watch = st.watchlist||[];
   const lower = text.toLowerCase();
@@ -527,9 +531,13 @@ function pushTranscriptLine(st, live, text){
   live.transcript.push(line);
   save();
   const log = document.getElementById('transcriptLog');
-  if(log){
+  if(log && (transcriptShowAll || isHighSignal(line))){
     log.insertAdjacentHTML('beforeend', transcriptLineHTML(live.sessionId, line));
     log.scrollTop = log.scrollHeight;
+  }
+  const hiddenEl = document.getElementById('hiddenCount');
+  if(hiddenEl && !transcriptShowAll){
+    hiddenEl.textContent = live.transcript.filter(l=>!l.done && !isHighSignal(l)).length;
   }
 }
 function transcriptLineHTML(sessionId, line){
@@ -874,7 +882,8 @@ function renderSession(st){
         ${live.consentConfirmedAt ? `<div class="mini">✓ Recording consent confirmed ${esc(fmtDateFull(live.consentConfirmedAt))}</div>` : ''}
         <div style="margin-bottom:8px"></div>` : `<p class="help">Live transcription needs Chrome — everything else on this page still works.</p>`}
         <div id="interimLine" class="mini" style="min-height:16px;font-style:italic"></div>
-        <div id="transcriptLog" class="translog">${(live.transcript||[]).filter(l=>!l.done).map(l=>transcriptLineHTML(live.sessionId,l)).join('')}</div>
+        <div id="transcriptLog" class="translog">${(live.transcript||[]).filter(l=>!l.done && (transcriptShowAll||isHighSignal(l))).map(l=>transcriptLineHTML(live.sessionId,l)).join('')}</div>
+        ${(live.transcript||[]).filter(l=>!l.done && !isHighSignal(l)).length ? `<button class="linkbtn muted no-print" style="margin-top:4px" onclick="transcriptShowAll=!transcriptShowAll;render()">${transcriptShowAll?'Hide low-signal lines':`Show everything (<span id="hiddenCount">${(live.transcript||[]).filter(l=>!l.done && !isHighSignal(l)).length}</span> hidden)`}</button>` : ''}
         <div class="divider"></div>
         <div class="eyebrow" style="margin-bottom:6px">Watchlist — highlight these words when heard</div>
         <div class="watchchips" style="margin-bottom:8px">${watchlist.map(w=>`<span class="watchchip">${esc(w)}<button class="xbtn" style="margin-left:0" onclick="removeWatchTerm('${esc(w).replace(/'/g,"\\'")}')">×</button></span>`).join('') || '<span class="mini">None yet — add terms you are actively working on, like "ser/estar" or "subjunctive"</span>'}</div>
@@ -1107,14 +1116,17 @@ function handleRecordingImport(file){
 function renderReview(st){
   const sess = st.sessions.find(s=>s.id===reviewSessionId);
   if(!sess){ reviewSessionId=null; return renderFile(st); }
-  const lines = (sess.transcript||[]).filter(l=>!l.done);
+  const all = (sess.transcript||[]).filter(l=>!l.done);
+  const lines = all.filter(l=>transcriptShowAll || isHighSignal(l));
+  const hiddenCount = all.length - lines.length;
   return `
   <div class="card">
     <div class="sectionhead">
-      <div><h3>Reviewing session from ${esc(fmtDateFull(sess.date))}</h3><div class="mini">${lines.length} moment${lines.length===1?'':'s'} left to review</div></div>
+      <div><h3>Reviewing session from ${esc(fmtDateFull(sess.date))}</h3><div class="mini">${all.length} moment${all.length===1?'':'s'} left to review</div></div>
       <button class="btn btn-sm" onclick="reviewSessionId=null;render()">Back to file</button>
     </div>
-    ${lines.length ? `<div class="translog" style="max-height:none">${lines.map(l=>transcriptLineHTML(sess.id,l)).join('')}</div>` : `<div class="help">Nothing left to review in this session — everything's been tagged or dismissed.</div>`}
+    ${all.length ? `<div class="translog" style="max-height:none">${lines.map(l=>transcriptLineHTML(sess.id,l)).join('')}</div>` : `<div class="help">Nothing left to review in this session — everything's been tagged or dismissed.</div>`}
+    ${hiddenCount ? `<button class="linkbtn muted no-print" style="margin-top:4px" onclick="transcriptShowAll=!transcriptShowAll;render()">${transcriptShowAll?'Hide low-signal lines':`Show everything (${hiddenCount} hidden)`}</button>` : ''}
   </div>`;
 }
 
