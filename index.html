@@ -1511,11 +1511,26 @@ function renderStudentHeader(){
 }
 function renderStudentImportPrompt(){
   return `
-  <div class="emptystate">
-    <div class="bigicon">👋</div>
-    <h2>Welcome — let's find your file</h2>
-    <p>Your tutor will send you a small file. Import it here to see your progress, review corrections, and practice your vocabulary — right on this device, whenever you like.</p>
-    <button class="btn btn-primary" onclick="document.getElementById('studentImportFile').click()">Import your file</button>
+  <div class="stack">
+    <div class="card herocard" style="text-align:center;padding:30px 24px">
+      <div class="bigicon">👋</div>
+      <h2 style="margin-bottom:6px">Welcome to your lesson space</h2>
+      <p class="help" style="max-width:480px;margin:0 auto">Record lessons, review the corrections your tutor flagged, and practice your vocabulary — all saved right here on this device, never on a server.</p>
+    </div>
+    <div class="dashgrid">
+      <div class="card dashcard" onclick="practice.active=false;studentTab='record';render()">
+        <div class="bigicon" style="font-size:26px;margin-bottom:2px">🎙️</div>
+        <h3 style="font-size:16px">Record today's lesson</h3>
+        <p class="help">No file needed yet — start recording any time and send it to your tutor when you're done.</p>
+        <button class="btn btn-primary btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();practice.active=false;studentTab='record';render()">Go to Record lesson</button>
+      </div>
+      <div class="card dashcard" onclick="document.getElementById('studentImportFile').click()">
+        <div class="bigicon" style="font-size:26px;margin-bottom:2px">📂</div>
+        <h3 style="font-size:16px">Already have a file from your tutor?</h3>
+        <p class="help">Import it to see your progress, review flagged corrections, and practice your vocabulary with flashcards.</p>
+        <button class="btn btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();document.getElementById('studentImportFile').click()">Import your file</button>
+      </div>
+    </div>
   </div>`;
 }
 function renderStudentReport(st){
@@ -1749,6 +1764,12 @@ function renderStudentRecordTab(){
     ${studentRecording.consentConfirmedAt ? `<div class="mini" style="margin-bottom:6px">✓ Recording consent confirmed</div>` : ''}
     <div id="srecInterim" class="mini" style="min-height:16px;font-style:italic"></div>
     <div id="srecLog" class="translog">${studentRecording.transcript.map(l=>`<div class="transline">${esc(l.text)}</div>`).join('')}</div>
+    ${(!hasData && !srecActive) ? `
+    <div class="statrow" style="margin-top:16px">
+      <div class="stat"><div class="num">1</div><div class="lbl">Press start</div></div>
+      <div class="stat"><div class="num">2</div><div class="lbl">Talk normally</div></div>
+      <div class="stat"><div class="num">3</div><div class="lbl">Send to your tutor</div></div>
+    </div>` : ''}
     ` : `<p class="help">Recording needs Chrome — everything else on this page still works.</p>`}
   </div>`;
 }
