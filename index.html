@@ -141,6 +141,10 @@ a{color:var(--accent-strong)}
 .emptystate{text-align:center;padding:70px 20px;color:var(--text-2)}
 .emptystate h2{font-size:19px;margin-bottom:8px;color:var(--text)}
 .emptystate .btn{margin-top:16px}
+.emptystate .bigicon{font-size:34px;margin-bottom:6px}
+
+.herocard{background:linear-gradient(160deg, var(--accent-tint), var(--surface) 55%);border-color:color-mix(in oklch, var(--accent-strong) 22%, var(--border-soft))}
+.avatarlg{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:white;flex:0 0 auto}
 
 .mistakecard{border-radius:11px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;border:1px solid var(--border-soft);background:var(--surface)}
 .mistakecard.flagged{border-color:color-mix(in oklch, var(--warn) 45%, var(--border-soft))}
@@ -1508,7 +1512,8 @@ function renderStudentHeader(){
 function renderStudentImportPrompt(){
   return `
   <div class="emptystate">
-    <h2>Import your lesson file</h2>
+    <div class="bigicon">👋</div>
+    <h2>Welcome — let's find your file</h2>
     <p>Your tutor will send you a small file. Import it here to see your progress, review corrections, and practice your vocabulary — right on this device, whenever you like.</p>
     <button class="btn btn-primary" onclick="document.getElementById('studentImportFile').click()">Import your file</button>
   </div>`;
@@ -1526,11 +1531,14 @@ function renderStudentReport(st){
     `<span class="deltabadge delta-flat">steady</span>`;
   return `
   <div class="stack">
-    <div class="card">
+    <div class="card herocard">
       <div class="sectionhead">
-        <div>
-          <h3 style="font-size:19px">Hi ${esc(st.name)} — here's your progress</h3>
-          <div class="mini">${esc(st.lang)} &middot; ${esc(st.level)} &middot; ${st.sessions.length} session${st.sessions.length===1?'':'s'}</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="avatarlg" style="background:${colorFor(st.name)}">${esc(initials(st.name))}</span>
+          <div>
+            <h3 style="font-size:19px">Hi ${esc(st.name)} — here's your progress</h3>
+            <div class="mini">${esc(st.lang)} &middot; ${esc(st.level)} &middot; ${st.sessions.length} session${st.sessions.length===1?'':'s'}</div>
+          </div>
         </div>
         <div class="no-print" style="display:flex;flex-wrap:wrap;gap:8px">
           <button class="btn btn-sm" onclick="window.print()">Save as PDF</button>
@@ -1696,7 +1704,7 @@ function updateSRecUI(){
   if(banner){
     if(srecState==='listening') banner.outerHTML = `<div id="srecBanner" class="recbanner live"><span class="dot"></span>Recording — listening</div>`;
     else if(srecState==='stalled') banner.outerHTML = `<div id="srecBanner" class="recbanner stalled">Recording stopped unexpectedly<button class="btn btn-sm" style="margin-left:auto" onclick="resumeStudentRecording()">Resume</button></div>`;
-    else banner.outerHTML = `<div id="srecBanner" class="recbanner off">Not recording</div>`;
+    else banner.outerHTML = `<div id="srecBanner" class="recbanner off">Ready when you are</div>`;
   }
 }
 function discardStudentRecording(){
@@ -1731,7 +1739,7 @@ function renderStudentRecordTab(){
     ${speechSupported() ? `
     <p class="help">Click start at the beginning of your lesson and just talk normally — there's nothing else to do. Your tutor will use this afterward; it isn't sent anywhere automatically.</p>
     <div id="srecBanner" class="recbanner ${srecState==='listening'?'live':srecState==='stalled'?'stalled':'off'}">
-      ${srecState==='listening' ? `<span class="dot"></span>Recording — listening` : srecState==='stalled' ? `Recording stopped unexpectedly<button class="btn btn-sm" style="margin-left:auto" onclick="resumeStudentRecording()">Resume</button>` : `Not recording`}
+      ${srecState==='listening' ? `<span class="dot"></span>Recording — listening` : srecState==='stalled' ? `Recording stopped unexpectedly<button class="btn btn-sm" style="margin-left:auto" onclick="resumeStudentRecording()">Resume</button>` : `Ready when you are`}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
       <button id="srecToggleBtn" class="btn ${srecActive?'recbtn':'off'}" onclick="toggleStudentRecording()">${srecActive?'Stop recording':'Start recording'}</button>
