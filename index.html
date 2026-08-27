@@ -1460,12 +1460,30 @@ function renderPreLessonBrief(st){
     <div class="stack" style="gap:6px">${items.join('')}</div>
   </div>`;
 }
+function renderDiarizeReminder(){
+  if(diarizeSettings.enabled || !diarizeSettings.nvidiaApiKey) return '';
+  return `<div class="card no-print" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-color:var(--accent-strong);max-width:460px;margin:0 auto 14px">
+    <span style="font-size:20px">🎙️</span>
+    <div style="flex:1">
+      <div style="font-weight:600">Speaker-separated transcription is set up but off</div>
+      <div class="mini">You added an NVIDIA key earlier — turn it on for this session so you don't need to remember later.</div>
+    </div>
+    <button class="btn btn-sm btn-primary" onclick="enableDiarizeForSession()">Turn on</button>
+  </div>`;
+}
+function enableDiarizeForSession(){
+  diarizeSettings.enabled = true;
+  saveDiarizeSettings();
+  toast('Speaker-separated transcription turned on');
+  render();
+}
 function renderSession(st){
   const live = liveMistakeFor(st);
   const otherLive = state.liveSession && state.liveSession.studentId!==st.id;
 
   if(!live){
     return `
+    ${renderDiarizeReminder()}
     ${renderPreLessonBrief(st)}
     <div class="card" style="text-align:center;padding:34px 20px">
       <div class="eyebrow">Ready when you are</div>
@@ -1498,7 +1516,7 @@ function renderSession(st){
         ${speechSupported() ? `
         <p class="help">${diarizeReady()
           ? `Speaker-separated mode is on — audio is sent to NVIDIA's Riva speech AI to reliably tell your voice from ${esc(st.name)}'s. You'll read a short calibration phrase when you start recording.`
-          : `Uses Chrome's built-in speech recognition — audio is sent to Google to produce text, nothing audio is stored by this app. Works best over speakers; if you're on headphones it can only hear you, not your student. <button class="linkbtn" onclick="openDiarizeSettings()">Turn on more reliable speaker separation</button>`}</p>
+          : `Uses Chrome's built-in speech recognition — audio is sent to Google to produce text, nothing audio is stored by this app. Works best over speakers; if you're on headphones it can only hear you, not your student. ${diarizeSettings.nvidiaApiKey ? `<button class="linkbtn" onclick="enableDiarizeForSession()">Turn on speaker separation</button>` : `<button class="linkbtn" onclick="openDiarizeSettings()">Turn on more reliable speaker separation</button>`}`}</p>
         <div id="recBanner" class="recbanner ${recState==='listening'?'live':recState==='stalled'?'stalled':'off'}">
           ${recState==='listening' ? `<span class="dot"></span>Recording — listening` : recState==='stalled' ? `Recording stopped unexpectedly<button class="btn btn-sm" style="margin-left:auto" onclick="resumeRecording()">Resume</button>` : `Not recording`}
         </div>
