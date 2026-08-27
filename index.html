@@ -541,6 +541,50 @@ function saveStudentRecording(){ localStorage.setItem('lessoncopilot_recording_v
 let studentRecording = loadStudentRecording();
 
 let state = load();
+
+/* ---------- speaker-separated transcription (opt-in, NVIDIA Riva) ---------- */
+/* Kept in its own localStorage key, deliberately separate from `state`, so the
+   API key never gets swept into exportAll()/exportStudent() and shared with a student. */
+const DIARIZE_SETTINGS_KEY = 'chattercheck_diarize_settings_v1';
+const DIARIZE_PROXY_URL = 'https://chattercheck-riva-proxy.vercel.app/api/diarize';
+function loadDiarizeSettings(){
+  try{ const raw = localStorage.getItem(DIARIZE_SETTINGS_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+  return { nvidiaApiKey:'', enabled:false, maxSpeakers:2 };
+}
+function saveDiarizeSettings(){ localStorage.setItem(DIARIZE_SETTINGS_KEY, JSON.stringify(diarizeSettings)); }
+let diarizeSettings = loadDiarizeSettings();
+
+function openDiarizeSettings(){
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Speaker-separated transcription</h3>
+      <p class="help">Beta feature. Uses NVIDIA's free Riva speech AI to reliably tell your voice apart from your student's — more accurate than the built-in guesswork. Requires your own free NVIDIA API key; nothing is stored on any server, your key stays only in this browser.</p>
+      <div class="field"><label>NVIDIA API key</label><input id="dsKey" type="password" placeholder="nvapi-..." value="${esc(diarizeSettings.nvidiaApiKey)}"></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="dsEnabled" style="width:16px;height:16px" ${diarizeSettings.enabled?'checked':''}> Enable for live sessions
+      </label>
+      <p class="mini">You'll be asked to read a short calibration phrase at the start of each session so it can tell your voice from your student's.</p>
+      <div class="modalrow">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmDiarizeSettings()">Save</button>
+      </div>
+    </div>`;
+  overlay.id = 'modalHost';
+  document.body.appendChild(overlay);
+}
+function confirmDiarizeSettings(){
+  const key = document.getElementById('dsKey').value.trim();
+  const enabled = document.getElementById('dsEnabled').checked;
+  if(enabled && !key){ toast('Add your NVIDIA API key first, or leave this switched off'); return; }
+  diarizeSettings = { nvidiaApiKey:key, enabled, maxSpeakers:2 };
+  saveDiarizeSettings();
+  closeModal();
+  toast('Saved');
+  render();
+}
+
 let view = 'dashboard'; // 'dashboard' | 'session' | 'file'
 let showFullLog = false;
 let practice = { active:false, idx:0, order:[], revealed:false, typeFilter:'all' };
@@ -667,11 +711,12 @@ function tagLine(st, text, prevText){
   if(watch.some(w=> w && lower.includes(w.toLowerCase()))) tags.push('watch');
   return tags;
 }
+function diarizeReady(){ return diarizeSettings.enabled && !!diarizeSettings.nvidiaApiKey; }
 function toggleRecording(){
-  if(recActive){ stopRecording(); return; }
+  if(recActive){ diarizeReady() ? stopDiarizedRecording() : stopRecording(); return; }
   const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
-  if(!speechSupported()){ toast('Speech recognition needs Chrome'); return; }
-  if(live.consentConfirmedAt){ startRecording(); return; }
+  if(!diarizeReady() && !speechSupported()){ toast('Speech recognition needs Chrome'); return; }
+  if(live.consentConfirmedAt){ diarizeReady() ? startDiarizedRecording() : startRecording(); return; }
   openRecordingConsent();
 }
 function openRecordingConsent(){
@@ -696,7 +741,7 @@ function confirmRecordingConsent(){
   live.consentConfirmedAt = Date.now();
   save();
   closeModal();
-  startRecording();
+  diarizeReady() ? startDiarizedRecording() : startRecording();
 }
 function startRecording(){
   const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
@@ -753,12 +798,106 @@ function stopRecording(){
   recognizer = null;
   updateRecUI();
 }
+
+/* ---------- diarized recording (speaker-separated transcription via NVIDIA Riva) ---------- */
+const CALIBRATION_PHRASE = "The quick brown fox jumps over the lazy dog while learning a new language.";
+const DIARIZE_CHUNK_MS = 60000;
+let diarizeRec = { stage:'idle', stream:null, calibrationBlob:null, calibrationDurationMs:0, mediaRecorder:null, chunkTimer:null };
+
+function startDiarizedRecording(){
+  const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
+  diarizeRec = { stage:'calibrating', stream:null, calibrationBlob:null, calibrationDurationMs:0, mediaRecorder:null, chunkTimer:null };
+  recActive = true;
+  updateRecUI();
+  navigator.mediaDevices.getUserMedia({ audio:true }).then(stream=>{
+    diarizeRec.stream = stream;
+    recordCalibrationClip();
+  }).catch(()=>{
+    toast('Microphone access was blocked — allow it to record');
+    recActive = false; diarizeRec.stage = 'idle'; updateRecUI();
+  });
+}
+function recordCalibrationClip(){
+  if(!diarizeRec.stream) return;
+  const chunks = [];
+  const mr = new MediaRecorder(diarizeRec.stream, { mimeType:'audio/webm;codecs=opus' });
+  const startedAt = Date.now();
+  mr.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
+  mr.onstop = () => {
+    diarizeRec.calibrationBlob = new Blob(chunks, { type:'audio/webm' });
+    diarizeRec.calibrationDurationMs = Date.now() - startedAt;
+    if(!recActive) return; // stopped during calibration
+    diarizeRec.stage = 'recording';
+    updateRecUI();
+    runDiarizeChunk();
+  };
+  mr.start();
+  diarizeRec.mediaRecorder = mr;
+  setTimeout(()=>{ if(mr.state!=='inactive'){ try{ mr.stop(); }catch(e){} } }, 4000);
+}
+function runDiarizeChunk(){
+  if(!recActive || !diarizeRec.stream) return;
+  const chunks = [];
+  const mr = new MediaRecorder(diarizeRec.stream, { mimeType:'audio/webm;codecs=opus' });
+  diarizeRec.mediaRecorder = mr;
+  mr.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
+  mr.onstop = () => {
+    const blob = new Blob(chunks, { type:'audio/webm' });
+    if(recActive) runDiarizeChunk(); // keep capturing immediately; upload happens alongside
+    if(blob.size > 500) uploadDiarizeChunk(blob);
+  };
+  mr.start();
+  diarizeRec.chunkTimer = setTimeout(()=>{ if(mr.state!=='inactive'){ try{ mr.stop(); }catch(e){} } }, DIARIZE_CHUNK_MS);
+}
+async function uploadDiarizeChunk(blob){
+  const st = activeStudentForLiveSession(); const live = state.liveSession;
+  if(!st || !live || !diarizeRec.calibrationBlob) return;
+  const form = new FormData();
+  form.append('calibration', diarizeRec.calibrationBlob, 'calibration.webm');
+  form.append('chunk', blob, 'chunk.webm');
+  try{
+    const resp = await fetch(DIARIZE_PROXY_URL, {
+      method:'POST',
+      headers:{
+        'X-Nvidia-Api-Key': diarizeSettings.nvidiaApiKey,
+        'X-Max-Speakers': String(diarizeSettings.maxSpeakers||2),
+        'X-Calibration-Duration-Ms': String(diarizeRec.calibrationDurationMs),
+      },
+      body: form,
+    });
+    if(!resp.ok){
+      const err = await resp.json().catch(()=>({}));
+      toast('Speaker separation hiccup: ' + (err.error || resp.status) + ' — still recording');
+      return;
+    }
+    const data = await resp.json();
+    for(const seg of (data.segments||[])){
+      if(seg.text && seg.text.trim()) pushTranscriptLine(st, live, seg.text.trim(), seg.role);
+    }
+  }catch(e){
+    toast('Could not reach the speaker-separation service — still recording, will retry next chunk');
+  }
+}
+function stopDiarizedRecording(){
+  recActive = false;
+  clearTimeout(diarizeRec.chunkTimer);
+  try{ diarizeRec.mediaRecorder && diarizeRec.mediaRecorder.state!=='inactive' && diarizeRec.mediaRecorder.stop(); }catch(e){}
+  try{ diarizeRec.stream && diarizeRec.stream.getTracks().forEach(t=>t.stop()); }catch(e){}
+  diarizeRec = { stage:'idle', stream:null, calibrationBlob:null, calibrationDurationMs:0, mediaRecorder:null, chunkTimer:null };
+  updateRecUI();
+}
+
 function updateRecUI(){
   const btn = document.getElementById('recToggleBtn');
   if(btn){ btn.textContent = recActive ? 'Stop recording' : 'Start recording'; btn.classList.toggle('recbtn', recActive); btn.classList.toggle('off', !recActive); }
   const banner = document.getElementById('recBanner');
   if(banner){
-    if(recState==='listening') banner.outerHTML = `<div id="recBanner" class="recbanner live"><span class="dot"></span>Recording — listening</div>`;
+    if(diarizeReady()){
+      if(diarizeRec.stage==='calibrating') banner.outerHTML = `<div id="recBanner" class="recbanner live"><span class="dot"></span>Calibrating — please read aloud: "${esc(CALIBRATION_PHRASE)}"</div>`;
+      else if(diarizeRec.stage==='recording') banner.outerHTML = `<div id="recBanner" class="recbanner live"><span class="dot"></span>Recording — speaker-separated</div>`;
+      else banner.outerHTML = `<div id="recBanner" class="recbanner off">Not recording</div>`;
+    }
+    else if(recState==='listening') banner.outerHTML = `<div id="recBanner" class="recbanner live"><span class="dot"></span>Recording — listening</div>`;
     else if(recState==='stalled') banner.outerHTML = `<div id="recBanner" class="recbanner stalled">Recording stopped unexpectedly<button class="btn btn-sm" style="margin-left:auto" onclick="resumeRecording()">Resume</button></div>`;
     else banner.outerHTML = `<div id="recBanner" class="recbanner off">Not recording</div>`;
   }
@@ -778,26 +917,29 @@ function handleRecResult(e){
   const interimEl = document.getElementById('interimLine');
   if(interimEl) interimEl.textContent = interim;
 }
-function pushTranscriptLine(st, live, text){
+function pushTranscriptLine(st, live, text, role){
   const prev = live.transcript[live.transcript.length-1];
-  const line = { id:uid(), t: Date.now()-live.startedAt, text, tags: tagLine(st, text, prev?prev.text:null), done:false };
+  // Diarization already told us who's speaking — never flag the tutor's own lines as mistakes.
+  const tags = role==='tutor' ? [] : tagLine(st, text, prev?prev.text:null);
+  const line = { id:uid(), t: Date.now()-live.startedAt, text, tags, done:false, role: role||null };
   live.transcript.push(line);
   save();
   const log = document.getElementById('transcriptLog');
-  if(log && (transcriptShowAll || isHighSignal(line))){
+  if(log && (transcriptShowAll || isHighSignal(line) || role)){
     log.insertAdjacentHTML('beforeend', transcriptLineHTML(live.sessionId, line));
     log.scrollTop = log.scrollHeight;
   }
   const hiddenEl = document.getElementById('hiddenCount');
   if(hiddenEl && !transcriptShowAll){
-    hiddenEl.textContent = live.transcript.filter(l=>!l.done && !isHighSignal(l)).length;
+    hiddenEl.textContent = live.transcript.filter(l=>!l.done && !isHighSignal(l) && !l.role).length;
   }
 }
 function transcriptLineHTML(sessionId, line){
   const tagLabel = line.tags.includes('watch') ? TAGMETA.watch.label : line.tags.includes('repair') ? TAGMETA.repair.label : line.tags.includes('filler') ? TAGMETA.filler.label : '';
   const cls = line.tags.includes('watch') ? 'tag-watch' : line.tags.includes('repair') ? 'tag-repair' : line.tags.includes('filler') ? 'tag-filler' : '';
+  const roleLabel = line.role==='tutor' ? `<span class="mini mono" style="opacity:.65">You</span> ` : line.role==='student' ? `<span class="mini mono" style="opacity:.65">Student</span> ` : '';
   return `<div class="transline ${cls}" data-line="${line.id}">
-    <div class="txt">${tagLabel?`<span class="tagpill">${tagLabel}</span>`:''}${esc(line.text)}</div>
+    <div class="txt">${roleLabel}${tagLabel?`<span class="tagpill">${tagLabel}</span>`:''}${esc(line.text)}</div>
     <div class="acts no-print">
       <button class="linkbtn" onclick="openTagAsMistake('${sessionId}','${line.id}')">+ mistake</button>
       <button class="linkbtn" onclick="openTagAsVocab('${sessionId}','${line.id}')">+ vocab</button>
@@ -1141,6 +1283,7 @@ function renderHeader(){
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('importFile').click()" title="Import a student file">Import</button>
       <input type="file" id="importFile" accept="application/json" style="display:none" onchange="handleImport(this.files[0])">
       <button class="btn btn-ghost btn-sm" onclick="exportAll()" title="Back up everything">Backup all</button>
+      <button class="btn btn-ghost btn-sm" onclick="openDiarizeSettings()" title="Speaker-separated transcription settings">⚙️ Settings</button>
       ${themeToggleBtn()}
     </div>
   </div>`;
@@ -1182,7 +1325,9 @@ function renderSession(st){
           ${esc(st.name)} is under 18
         </label>
         ${speechSupported() ? `
-        <p class="help">Uses Chrome's built-in speech recognition — audio is sent to Google to produce text, nothing audio is stored by this app. Works best over speakers; if you're on headphones it can only hear you, not your student.</p>
+        <p class="help">${diarizeReady()
+          ? `Speaker-separated mode is on — audio is sent to NVIDIA's Riva speech AI to reliably tell your voice from ${esc(st.name)}'s. You'll read a short calibration phrase when you start recording.`
+          : `Uses Chrome's built-in speech recognition — audio is sent to Google to produce text, nothing audio is stored by this app. Works best over speakers; if you're on headphones it can only hear you, not your student. <button class="linkbtn" onclick="openDiarizeSettings()">Turn on more reliable speaker separation</button>`}</p>
         <div id="recBanner" class="recbanner ${recState==='listening'?'live':recState==='stalled'?'stalled':'off'}">
           ${recState==='listening' ? `<span class="dot"></span>Recording — listening` : recState==='stalled' ? `Recording stopped unexpectedly<button class="btn btn-sm" style="margin-left:auto" onclick="resumeRecording()">Resume</button>` : `Not recording`}
         </div>
@@ -1195,8 +1340,8 @@ function renderSession(st){
         ${live.consentConfirmedAt ? `<div class="mini">✓ Recording consent confirmed ${esc(fmtDateFull(live.consentConfirmedAt))}</div>` : ''}
         <div style="margin-bottom:8px"></div>` : `<p class="help">Live transcription needs Chrome — everything else on this page still works.</p>`}
         <div id="interimLine" class="mini" style="min-height:16px;font-style:italic"></div>
-        <div id="transcriptLog" class="translog">${(live.transcript||[]).filter(l=>!l.done && (transcriptShowAll||isHighSignal(l))).map(l=>transcriptLineHTML(live.sessionId,l)).join('')}</div>
-        ${(live.transcript||[]).filter(l=>!l.done && !isHighSignal(l)).length ? `<button class="linkbtn muted no-print" style="margin-top:4px" onclick="transcriptShowAll=!transcriptShowAll;render()">${transcriptShowAll?'Hide low-signal lines':`Show everything (<span id="hiddenCount">${(live.transcript||[]).filter(l=>!l.done && !isHighSignal(l)).length}</span> hidden)`}</button>` : ''}
+        <div id="transcriptLog" class="translog">${(live.transcript||[]).filter(l=>!l.done && (transcriptShowAll||isHighSignal(l)||l.role)).map(l=>transcriptLineHTML(live.sessionId,l)).join('')}</div>
+        ${(live.transcript||[]).filter(l=>!l.done && !isHighSignal(l) && !l.role).length ? `<button class="linkbtn muted no-print" style="margin-top:4px" onclick="transcriptShowAll=!transcriptShowAll;render()">${transcriptShowAll?'Hide low-signal lines':`Show everything (<span id="hiddenCount">${(live.transcript||[]).filter(l=>!l.done && !isHighSignal(l) && !l.role).length}</span> hidden)`}</button>` : ''}
         <div class="divider"></div>
         <div class="eyebrow" style="margin-bottom:6px">Watchlist — highlight these words when heard</div>
         <div class="watchchips" style="margin-bottom:8px">${watchlist.map(w=>`<span class="watchchip">${esc(w)}<button class="xbtn" style="margin-left:0" onclick="removeWatchTerm('${jsAttr(w)}')">×</button></span>`).join('') || '<span class="mini">None yet — add terms you are actively working on, like "ser/estar" or "subjunctive"</span>'}</div>
