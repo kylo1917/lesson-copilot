@@ -547,6 +547,7 @@ let state = load();
    API key never gets swept into exportAll()/exportStudent() and shared with a student. */
 const DIARIZE_SETTINGS_KEY = 'chattercheck_diarize_settings_v1';
 const DIARIZE_PROXY_URL = 'https://chattercheck-riva-proxy.vercel.app/api/diarize';
+const DIARIZE_TESTKEY_URL = 'https://chattercheck-riva-proxy.vercel.app/api/test-key';
 function loadDiarizeSettings(){
   try{ const raw = localStorage.getItem(DIARIZE_SETTINGS_KEY); if(raw) return JSON.parse(raw); }catch(e){}
   return { nvidiaApiKey:'', enabled:false, maxSpeakers:2 };
@@ -562,6 +563,10 @@ function openDiarizeSettings(){
       <h3>Speaker-separated transcription</h3>
       <p class="help">Beta feature. Uses NVIDIA's free Riva speech AI to reliably tell your voice apart from your student's — more accurate than the built-in guesswork. Requires your own free NVIDIA API key; nothing is stored on any server, your key stays only in this browser. <a href="https://kylo1917.github.io/chattercheck/privacy.html" target="_blank" rel="noopener">Full privacy details</a></p>
       <div class="field"><label>NVIDIA API key</label><input id="dsKey" type="password" placeholder="nvapi-..." value="${esc(diarizeSettings.nvidiaApiKey)}"></div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button class="btn btn-sm" onclick="testDiarizeKey()">Test key</button>
+        <span id="dsTestResult" class="mini"></span>
+      </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
         <input type="checkbox" id="dsEnabled" style="width:16px;height:16px" ${diarizeSettings.enabled?'checked':''}> Enable for live sessions
       </label>
@@ -573,6 +578,21 @@ function openDiarizeSettings(){
     </div>`;
   overlay.id = 'modalHost';
   document.body.appendChild(overlay);
+}
+async function testDiarizeKey(){
+  const key = document.getElementById('dsKey').value.trim();
+  const resultEl = document.getElementById('dsTestResult');
+  if(!key){ resultEl.textContent = 'Add a key first'; resultEl.style.color = 'var(--warn)'; return; }
+  resultEl.textContent = 'Checking…'; resultEl.style.color = '';
+  try{
+    const resp = await fetch(DIARIZE_TESTKEY_URL, { method:'POST', headers:{ 'X-Nvidia-Api-Key': key } });
+    const data = await resp.json();
+    if(data.ok){ resultEl.textContent = '✓ Key works'; resultEl.style.color = 'var(--good)'; }
+    else { resultEl.textContent = data.error || 'Key check failed'; resultEl.style.color = 'var(--bad)'; }
+  }catch(e){
+    resultEl.textContent = 'Could not reach the check service — check your connection';
+    resultEl.style.color = 'var(--bad)';
+  }
 }
 function confirmDiarizeSettings(){
   const key = document.getElementById('dsKey').value.trim();
