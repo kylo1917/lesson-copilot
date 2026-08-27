@@ -870,9 +870,11 @@ function startDiarizedRecording(){
   recActive = true;
   updateRecUI();
   navigator.mediaDevices.getUserMedia({ audio:true }).then(stream=>{
+    if(!recActive){ stream.getTracks().forEach(t=>t.stop()); return; } // user hit Stop before the mic prompt resolved
     diarizeRec.stream = stream;
     recordCalibrationClip();
   }).catch(()=>{
+    if(!recActive) return;
     toast('Microphone access was blocked — allow it to record');
     recActive = false; diarizeRec.stage = 'idle'; updateRecUI();
   });
@@ -1058,6 +1060,7 @@ function openTagAsMistake(sessionId, lineId){
 function confirmTagAsMistake(sessionId, lineId){
   const st = activeStudent(); if(!st) return;
   const text = document.getElementById('tmText').value.trim();
+  if(!text){ toast('Add what was said first'); return; }
   const correction = document.getElementById('tmFix').value.trim();
   const category = document.getElementById('tmCat').value;
   addMistake(st, sessionId, text, correction, category);
@@ -1090,6 +1093,7 @@ function openTagAsVocab(sessionId, lineId){
 function confirmTagAsVocab(sessionId, lineId){
   const st = activeStudent(); if(!st) return;
   const term = document.getElementById('tgTerm').value.trim();
+  if(!term){ toast('Add the term first'); return; }
   const type = document.getElementById('tgType').value;
   const meaning = document.getElementById('tgMean').value.trim();
   const example = document.getElementById('tgEx').value.trim();
@@ -2066,6 +2070,25 @@ function shouldShowBackupReminder(){
   if(totalSessionsLogged() < 1) return false;
   return daysSinceLastBackup() > BACKUP_REMINDER_DAYS;
 }
+function normalizeStudent(s){
+  // A hand-edited, corrupted, or older-format file could be missing any of these fields.
+  // Fill in safe defaults so an import can never crash the page — for a student importing
+  // their own file, there's no way to recover from a blank/broken screen on their own.
+  const copy = JSON.parse(JSON.stringify(s || {}));
+  copy.name = (typeof copy.name==='string' && copy.name.trim()) ? copy.name.trim() : 'Unnamed student';
+  copy.lang = (typeof copy.lang==='string' && copy.lang.trim()) ? copy.lang.trim() : 'General';
+  copy.level = copy.level || 'B1';
+  copy.color = copy.color || colorFor(copy.name);
+  copy.isMinor = !!copy.isMinor;
+  copy.sessions = Array.isArray(copy.sessions) ? copy.sessions : [];
+  copy.mistakes = Array.isArray(copy.mistakes) ? copy.mistakes : [];
+  copy.glossary = Array.isArray(copy.glossary) ? copy.glossary : [];
+  copy.watchlist = Array.isArray(copy.watchlist) ? copy.watchlist : [];
+  copy.sessions.forEach(sess=>{ if(!Array.isArray(sess.transcript)) sess.transcript = []; });
+  copy.mistakes.forEach(m=>{ if(!Array.isArray(m.occurrences)) m.occurrences = []; });
+  copy.glossary.forEach(g=>{ if(!Array.isArray(g.occurrences)) g.occurrences = []; });
+  return copy;
+}
 function extractStudents(data){
   if(data.kind==='lesson-copilot-student' && data.student) return [data.student];
   if(data.kind==='lesson-copilot-backup' && data.state?.students) return data.state.students;
@@ -2095,7 +2118,7 @@ function handleStudentImport(file){
     try{ data = JSON.parse(reader.result); }catch(e){ toast('That file is not valid JSON'); return; }
     const incoming = extractStudents(data)[0];
     if(!incoming){ toast("Couldn't find your lesson file in there"); return; }
-    studentState.student = JSON.parse(JSON.stringify(incoming));
+    studentState.student = normalizeStudent(incoming);
     saveStudentState();
     practice.active = false;
     render();
@@ -2112,15 +2135,15 @@ function handleImport(file){
     try{ data = JSON.parse(reader.result); }catch(e){ toast('That file is not valid JSON'); return; }
     const incoming = extractStudents(data);
     if(!incoming.length){ toast("Couldn't find a student record in that file"); return; }
-    incoming.forEach(s=>{
-      const copy = JSON.parse(JSON.stringify(s));
+    const imported = incoming.map(s=>{
+      const copy = normalizeStudent(s);
       copy.id = uid();
-      copy.color = copy.color || colorFor(copy.name||'?');
       state.students.push(copy);
       state.activeStudentId = copy.id;
+      return copy;
     });
     save(); view='file'; render();
-    toast(incoming.length>1 ? `Imported ${incoming.length} students` : `Imported ${incoming[0].name}`);
+    toast(imported.length>1 ? `Imported ${imported.length} students` : `Imported ${imported[0].name}`);
   };
   reader.readAsText(file);
   document.getElementById('importFile').value='';
