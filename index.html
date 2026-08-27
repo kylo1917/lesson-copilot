@@ -1469,6 +1469,10 @@ function renderDashboard(){
             ${r.due?`<span class="pill" style="background:var(--accent-tint);color:var(--accent-ink)">${r.due} due</span>`:''}
             ${!r.needsAttn && !r.unreviewed && !r.due?`<span class="mini">All caught up</span>`:''}
           </div>
+          <div class="row no-print" style="flex-wrap:wrap;gap:6px;margin-top:2px">
+            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();copyLessonContext('${r.st.id}')">Copy context</button>
+            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();selectStudent('${r.st.id}');cheatSheetMode=true;render()">Cheat sheet</button>
+          </div>
           <div class="row" style="align-items:center">
             <div class="mini">${r.lastSession?'Last session '+esc(fmtDate(r.lastSession)):'No sessions yet'}</div>
             <button class="btn btn-sm no-print" onclick="event.stopPropagation();selectStudent('${r.st.id}');view='session';render()">Start session</button>
