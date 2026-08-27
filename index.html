@@ -1382,12 +1382,27 @@ function crossStudentInsights(){
     .map(([cat,ids])=>({cat, count:ids.size}))
     .sort((a,b)=>b.count-a.count);
 }
+function buildCrossStudentContext(insights){
+  const lines = [`Teaching prep — patterns across ${state.students.length} students`, ''];
+  insights.forEach(i=>{
+    const c = CATS[i.cat];
+    lines.push(`- ${c?c.label:i.cat}: ${i.count} of ${state.students.length} students have a recurring issue here`);
+  });
+  lines.push('');
+  lines.push('Use this to suggest a general lesson activity or worksheet that would help with these shared problem areas.');
+  return lines.join('\n');
+}
+function copyCrossStudentContext(){
+  const insights = crossStudentInsights();
+  if(!insights.length) return;
+  copyText(buildCrossStudentContext(insights), 'Cross-student insights copied — paste it into Claude');
+}
 function renderCrossStudentInsights(){
   if(state.students.length<2) return '';
   const insights = crossStudentInsights();
   if(!insights.length) return '';
   return `<div class="card no-print">
-    <div class="sectionhead"><h3>Across your students</h3></div>
+    <div class="sectionhead"><h3>Across your students</h3><button class="btn btn-sm" onclick="copyCrossStudentContext()">Copy for Claude</button></div>
     <div class="stack" style="gap:8px">${insights.map(i=>{
       const c = CATS[i.cat];
       return `<div class="quietrow"><span class="pill" style="background:var(${c.t});color:var(${c.v})">${c.label}</span><span>${i.count} of ${state.students.length} students have a recurring issue here</span></div>`;
@@ -1507,6 +1522,7 @@ function renderPreLessonBrief(st){
   return `<div class="card" style="max-width:460px;margin:0 auto 14px;text-align:left">
     <div class="eyebrow" style="margin-bottom:8px">Today's focus</div>
     <div class="stack" style="gap:6px">${items.join('')}</div>
+    <button class="btn btn-ghost btn-sm no-print" style="margin-top:10px" onclick="copyLessonContext('${st.id}')">Copy context for Claude</button>
   </div>`;
 }
 function renderDiarizeReminder(){
@@ -1525,6 +1541,78 @@ function enableDiarizeForSession(){
   saveDiarizeSettings();
   toast('Speaker-separated transcription turned on');
   render();
+}
+const DRILL_TEMPLATES = {
+  grammar: (name, m) => [
+    `Ask ${name} to say the corrected form three times in new sentences: "${m.correction||m.text}"`,
+    `Read back the mistake and have ${name} fix it on the spot: "${m.text}"`,
+    `Say both forms aloud — "${m.text}" and "${m.correction||m.text}" — and ask ${name} which is correct and why.`,
+  ],
+  vocab: (name, m) => [
+    `Ask ${name} for another way to say "${m.text}".`,
+    `Have ${name} use "${m.correction||m.text}" in a brand new sentence about their day.`,
+    `Give ${name} a short context and ask them to pick the better word choice between "${m.text}" and "${m.correction||m.text}".`,
+  ],
+  pron: (name, m) => [
+    `Isolate the word and have ${name} repeat it three times, exaggerating the correct sound.`,
+    `Find a word that rhymes with the correct pronunciation of "${m.correction||m.text}" and drill both together.`,
+    `Ask ${name} to say "${m.correction||m.text}" slowly, then at normal speed, twice each.`,
+  ],
+  usage: (name, m) => [
+    `Quick role-play: give ${name} a scenario where they must use "${m.correction||m.text}" naturally.`,
+    `Ask ${name} to explain, in their own words, when they'd use "${m.correction||m.text}" instead of "${m.text}".`,
+    `Have ${name} say one new sentence using "${m.correction||m.text}" correctly.`,
+  ],
+};
+const VOCAB_DRILL_TEMPLATES = {
+  vocabulary: (name, g) => [
+    `Ask ${name} to define "${g.term}" in their own words, then use it in a sentence.`,
+    `Give ${name} a quick scenario and have them work "${g.term}" into their response.`,
+    `Ask ${name} for a synonym of "${g.term}" — then check it actually fits.`,
+  ],
+  phrasal: (name, g) => [
+    `Give ${name} a situation and have them respond using the phrasal verb "${g.term}".`,
+    `Ask ${name} to swap "${g.term}" for a single-word synonym, then explain the difference in tone.`,
+  ],
+  collocation: (name, g) => [
+    `Prompt: "Finish this sentence using '${g.term}'..." and let ${name} complete it out loud.`,
+    `Ask ${name} what other word commonly pairs with part of "${g.term}".`,
+  ],
+  idiom: (name, g) => [
+    `Ask ${name} to guess the literal vs. actual meaning of "${g.term}", then use it correctly in a sentence.`,
+    `Give ${name} a short scenario and have them find a moment where "${g.term}" fits.`,
+  ],
+};
+function pickDrill(list){ return list[Math.floor(Math.random()*list.length)]; }
+let quickDrills = {};
+function showQuickDrill(kind, itemId){
+  const st = activeStudent(); if(!st) return;
+  let text;
+  if(kind==='mistake'){
+    const m = st.mistakes.find(x=>x.id===itemId); if(!m) return;
+    const templates = DRILL_TEMPLATES[m.category] || DRILL_TEMPLATES.usage;
+    text = pickDrill(templates(st.name, m));
+  } else {
+    const g = st.glossary.find(x=>x.id===itemId); if(!g) return;
+    const templates = VOCAB_DRILL_TEMPLATES[g.type] || VOCAB_DRILL_TEMPLATES.vocabulary;
+    text = pickDrill(templates(st.name, g));
+  }
+  quickDrills[kind+':'+itemId] = text;
+  render();
+}
+function copyQuickDrill(kind, itemId){
+  const text = quickDrills[kind+':'+itemId];
+  if(!text) return;
+  copyText(text, 'Drill copied');
+}
+function drillBlockHTML(kind, itemId){
+  const text = quickDrills[kind+':'+itemId];
+  if(!text) return `<button class="btn btn-ghost btn-sm no-print" style="margin-top:6px" onclick="showQuickDrill('${kind}','${itemId}')">🎲 Quick drill</button>`;
+  return `<div class="mini" style="margin-top:6px;padding:8px;border-radius:8px;background:var(--surface-2)">🎲 ${esc(text)}</div>
+    <div class="no-print" style="display:flex;gap:10px;margin-top:4px">
+      <button class="linkbtn" onclick="copyQuickDrill('${kind}','${itemId}')">Copy</button>
+      <button class="linkbtn muted" onclick="showQuickDrill('${kind}','${itemId}')">Another</button>
+    </div>`;
 }
 function renderSession(st){
   const live = liveMistakeFor(st);
@@ -1641,6 +1729,7 @@ function renderSession(st){
             </div>
             <div class="txt">${esc(m.text)}</div>
             ${m.correction?`<div class="fix">→ ${esc(m.correction)}</div>`:''}
+            ${drillBlockHTML('mistake', m.id)}
           </div>`;
         }).join('')}</div>` : `<div class="help">Nothing flagged yet — a mistake shows up here only once it repeats.</div>`}
 
@@ -1657,12 +1746,15 @@ function renderSession(st){
       ${vocabToday.length ? `
       <div class="card">
         <div class="sectionhead"><h3>Added this session</h3><span class="mini mono">${vocabToday.length}</span></div>
-        <div class="stack" style="gap:6px">${vocabToday.map(g=>{
+        <div class="stack" style="gap:10px">${vocabToday.map(g=>{
           const t = GTYPES[g.type];
-          return `<div class="quietrow">
-            <span class="pill" style="background:var(${t.t});color:var(${t.v})">${t.label}</span>
-            <span>${esc(g.term)}</span>
-            <button class="xbtn" onclick="removeGlossary('${g.id}')" title="Remove">×</button>
+          return `<div>
+            <div class="quietrow">
+              <span class="pill" style="background:var(${t.t});color:var(${t.v})">${t.label}</span>
+              <span>${esc(g.term)}</span>
+              <button class="xbtn" onclick="removeGlossary('${g.id}')" title="Remove">×</button>
+            </div>
+            ${drillBlockHTML('vocab', g.id)}
           </div>`;
         }).join('')}</div>
       </div>` : ''}
@@ -1695,6 +1787,7 @@ function renderFile(st){
         </div>
         <div class="no-print" style="display:flex;flex-wrap:wrap;gap:8px">
           <button class="btn btn-sm" onclick="cheatSheetMode=true;render()">Lesson cheat sheet</button>
+          <button class="btn btn-sm" onclick="copyLessonContext('${st.id}')">Copy lesson context</button>
           <button class="btn btn-sm" onclick="window.print()">Save as PDF</button>
           <button class="btn btn-sm" onclick="exportStudent('${st.id}')">Export file (.json)</button>
           <button class="btn btn-ghost btn-sm" onclick="deleteStudent('${st.id}')">Delete student</button>
@@ -1821,6 +1914,7 @@ function renderCheatSheet(st){
       <div><h3>Lesson cheat sheet — ${esc(st.name)}</h3><div class="mini">${esc(fmtDateFull(Date.now()))}</div></div>
       <div class="no-print" style="display:flex;gap:8px">
         <button class="btn btn-sm" onclick="cheatSheetMode=false;render()">Back</button>
+        <button class="btn btn-sm" onclick="copyLessonContext('${st.id}')">Copy for Claude</button>
         <button class="btn btn-sm btn-primary" onclick="window.print()">Print</button>
       </div>
     </div>
@@ -2142,18 +2236,59 @@ function extractStudents(data){
   if(data.id && Array.isArray(data.sessions)) return [data];
   return [];
 }
-function copyStudentLink(){
-  const url = location.origin + location.pathname + '?student=1';
-  const done = () => toast('Student link copied');
+function copyText(text, successMsg){
+  const done = () => toast(successMsg);
   const fail = () => {
     const ta = document.createElement('textarea');
-    ta.value = url; ta.style.position='fixed'; ta.style.opacity='0';
+    ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
     document.body.appendChild(ta); ta.select();
-    try{ document.execCommand('copy'); done(); }catch(e){ toast('Copy this link: '+url); }
+    try{ document.execCommand('copy'); done(); }catch(e){ toast('Could not copy — select the text and copy it manually'); }
     ta.remove();
   };
-  if(navigator.clipboard?.writeText) navigator.clipboard.writeText(url).then(done).catch(fail);
+  if(navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done).catch(fail);
   else fail();
+}
+function copyStudentLink(){
+  const url = location.origin + location.pathname + '?student=1';
+  copyText(url, 'Student link copied');
+}
+function buildLessonContext(st){
+  const prog = progression(st);
+  const needsAttention = st.mistakes.filter(m=>m.occurrences.length>1).sort((a,b)=>b.occurrences.length-a.occurrences.length);
+  const dueVocab = st.glossary.filter(g=>srsOf(g).nextReview<=Date.now());
+  const lastSession = st.sessions[st.sessions.length-1];
+  const lines = [];
+  lines.push(`Lesson context for ${st.name} — ${st.lang}, level ${st.level}`);
+  lines.push(`${st.sessions.length} session${st.sessions.length===1?'':'s'} logged${prog.current!==null?`, current average ${prog.current}%`:''}.`);
+  if(needsAttention.length){
+    lines.push('');
+    lines.push('Recurring mistakes to address:');
+    needsAttention.forEach(m=>{
+      const c = CATS[m.category];
+      lines.push(`- "${m.text}"${m.correction?` → ${m.correction}`:''} (${c?c.label:m.category}, seen ${m.occurrences.length}×)`);
+    });
+  }
+  if(dueVocab.length){
+    lines.push('');
+    lines.push('Vocabulary due for review:');
+    dueVocab.forEach(g=>{ lines.push(`- ${g.term}${g.meaning?`: ${g.meaning}`:''}`); });
+  }
+  if(st.watchlist && st.watchlist.length){
+    lines.push('');
+    lines.push(`Currently watching for: ${st.watchlist.join(', ')}`);
+  }
+  if(lastSession){
+    lines.push('');
+    lines.push(`Last session (${fmtDateFull(lastSession.date)}): ${lastSession.notes || 'no notes recorded'}`);
+  }
+  lines.push('');
+  lines.push(`Use this to help me prepare practice materials, explanations, or exercises for ${st.name}'s next lesson.`);
+  return lines.join('\n');
+}
+function copyLessonContext(studentId){
+  const st = state.students.find(s=>s.id===studentId);
+  if(!st) return;
+  copyText(buildLessonContext(st), `${st.name}'s lesson context copied — paste it into Claude`);
 }
 function handleStudentImport(file){
   if(!file) return;
