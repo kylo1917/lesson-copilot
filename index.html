@@ -1245,6 +1245,16 @@ function renderDashboard(){
 
   return `
   <div class="stack">
+    ${shouldShowBackupReminder() ? `
+    <div id="backupReminder" class="card no-print" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-color:var(--warn)">
+      <span style="font-size:20px">💾</span>
+      <div style="flex:1">
+        <div style="font-weight:600">${daysSinceLastBackup()===Infinity ? "You haven't backed up yet" : `It's been ${Math.floor(daysSinceLastBackup())} days since your last backup`}</div>
+        <div class="mini">Everything here lives only in this browser — if it's cleared or this device is lost, there's no way to recover it without a backup.</div>
+      </div>
+      <button class="btn btn-sm btn-primary" onclick="exportAll()">Backup now</button>
+      <button class="btn btn-sm btn-ghost" onclick="dismissBackupReminder()">Later</button>
+    </div>` : ''}
     <div class="statrow">
       <div class="stat"><div class="num">${students.length}</div><div class="lbl">Student${students.length===1?'':'s'}</div></div>
       <div class="stat"><div class="num">${totalNeedsAttn}</div><div class="lbl">Recurring mistakes</div></div>
@@ -1847,6 +1857,25 @@ function exportStudent(id){
 function exportAll(){
   const data = JSON.stringify({ kind:'lesson-copilot-backup', exportedAt: Date.now(), state }, null, 2);
   downloadFile('lesson-copilot-backup.json', data);
+  localStorage.setItem('chattercheck_last_backup_v1', String(Date.now()));
+}
+const BACKUP_REMINDER_DAYS = 14;
+function daysSinceLastBackup(){
+  const raw = localStorage.getItem('chattercheck_last_backup_v1');
+  if(!raw) return Infinity;
+  return (Date.now() - Number(raw)) / 86400000;
+}
+function totalSessionsLogged(){
+  return state.students.reduce((sum,s)=>sum+s.sessions.length, 0);
+}
+function dismissBackupReminder(){
+  sessionStorage.setItem('chattercheck_backup_reminder_dismissed', '1');
+  document.getElementById('backupReminder')?.remove();
+}
+function shouldShowBackupReminder(){
+  if(sessionStorage.getItem('chattercheck_backup_reminder_dismissed')) return false;
+  if(totalSessionsLogged() < 1) return false;
+  return daysSinceLastBackup() > BACKUP_REMINDER_DAYS;
 }
 function extractStudents(data){
   if(data.kind==='lesson-copilot-student' && data.student) return [data.student];
