@@ -173,6 +173,21 @@ a{color:var(--accent-strong)}
 .badgechip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:100px;background:var(--surface-2);border:1px solid var(--border-soft);font-size:13px;font-weight:600}
 .badgechip.earned{background:var(--accent-tint);color:var(--accent-ink);border-color:color-mix(in oklch, var(--accent-strong) 25%, var(--border-soft))}
 
+.spotlight{
+  background: radial-gradient(120% 140% at 0% 0%, oklch(28% 0.05 175) 0%, oklch(16% 0.025 260) 55%, oklch(13% 0.02 260) 100%);
+  border: 1px solid oklch(30% 0.03 175 / 0.5);
+  border-radius: 20px;
+  padding: 28px 30px;
+  color: oklch(96% 0.006 80);
+  box-shadow: 0 20px 50px oklch(15% 0.02 260 / 0.35);
+}
+.spotlight .eyebrow{background:oklch(40% 0.06 175 / 0.35);color:oklch(88% 0.05 175)}
+.spotlight-headline{font-size:clamp(22px,3vw,30px);font-weight:800;letter-spacing:-0.02em;line-height:1.1;margin:10px 0 4px}
+.spotlight-sub{color:oklch(78% 0.015 260);font-size:14px}
+.spotlight-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:20px;margin-top:22px}
+.spotlight-stat .num{font-size:clamp(26px,3.4vw,36px);font-weight:800;font-family:'IBM Plex Mono',monospace;letter-spacing:-0.02em;color:oklch(96% 0.01 175)}
+.spotlight-stat .num.accent{color:oklch(78% 0.11 175)}
+.spotlight-stat .lbl{font-size:12px;color:oklch(70% 0.015 260);margin-top:2px}
 .glossgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
 .dashgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
 .dashcard{cursor:pointer;display:flex;flex-direction:column;gap:10px;transition:border-color .15s,box-shadow .15s}
@@ -1227,7 +1242,7 @@ function progression(st){
 }
 
 /* ---------- charts ---------- */
-function chartSVG(st, H=170){
+function chartSVG(st, H=170, dark=false){
   const { ratings, cum } = progression(st);
   const n = ratings.length;
   if(n===0) return '<div class="help" style="padding:30px 0;text-align:center">No sessions yet — the progression chart fills in after your first saved session.</div>';
@@ -1238,21 +1253,26 @@ function chartSVG(st, H=170){
   const linePts = ratings.map((v,i)=> xFor(i)+','+yFor(v)).join(' ');
   const cumPts = cum.map((v,i)=> xFor(i)+','+yFor(v)).join(' ');
   const areaPts = cumPts + ' ' + xFor(n-1)+','+(H-padB) + ' ' + xFor(0)+','+(H-padB);
+  const gridStroke = dark ? 'oklch(40% 0.02 260)' : 'var(--border-soft)';
+  const labelFill = dark ? 'oklch(72% 0.015 260)' : 'var(--text-3)';
+  const accentStroke = dark ? 'oklch(78% 0.11 175)' : 'var(--accent)';
+  const areaFill = dark ? 'oklch(45% 0.07 175)' : 'var(--accent-tint)';
+  const dashedStroke = dark ? 'oklch(55% 0.02 260)' : 'var(--text-3)';
   let grid = '';
   [0,25,50,75,100].forEach(v=>{
     const y = yFor(v);
-    grid += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="var(--border-soft)" stroke-width="1"/>`;
-    grid += `<text x="${padL-6}" y="${y+3}" text-anchor="end" font-size="9" fill="var(--text-3)" font-family="IBM Plex Mono, monospace">${v}</text>`;
+    grid += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="${gridStroke}" stroke-width="1"/>`;
+    grid += `<text x="${padL-6}" y="${y+3}" text-anchor="end" font-size="9" fill="${labelFill}" font-family="IBM Plex Mono, monospace">${v}</text>`;
   });
-  const dots = ratings.map((v,i)=> `<circle cx="${xFor(i)}" cy="${yFor(v)}" r="${i===n-1?4:2.5}" fill="var(--accent)"/>`).join('');
+  const dots = ratings.map((v,i)=> `<circle cx="${xFor(i)}" cy="${yFor(v)}" r="${i===n-1?4:2.5}" fill="${accentStroke}"/>`).join('');
   return `<svg viewBox="0 0 ${W} ${H+16}" width="100%" style="overflow:visible">
     ${grid}
-    <polygon points="${areaPts}" fill="var(--accent-tint)" opacity="0.7"/>
-    <polyline points="${cumPts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
-    <polyline points="${linePts}" fill="none" stroke="var(--text-3)" stroke-width="1.3" stroke-dasharray="2 3"/>
+    <polygon points="${areaPts}" fill="${areaFill}" opacity="${dark?0.55:0.7}"/>
+    <polyline points="${cumPts}" fill="none" stroke="${accentStroke}" stroke-width="2" stroke-linejoin="round"/>
+    <polyline points="${linePts}" fill="none" stroke="${dashedStroke}" stroke-width="1.3" stroke-dasharray="2 3"/>
     ${dots}
-    <text x="${padL}" y="${H+13}" font-size="9.5" fill="var(--text-3)">${esc(fmtDate(st.sessions[0].date))}</text>
-    <text x="${W-padR}" y="${H+13}" text-anchor="end" font-size="9.5" fill="var(--text-3)">${esc(fmtDate(st.sessions[n-1].date))}</text>
+    <text x="${padL}" y="${H+13}" font-size="9.5" fill="${labelFill}">${esc(fmtDate(st.sessions[0].date))}</text>
+    <text x="${W-padR}" y="${H+13}" text-anchor="end" font-size="9.5" fill="${labelFill}">${esc(fmtDate(st.sessions[n-1].date))}</text>
   </svg>`;
 }
 
@@ -1315,12 +1335,18 @@ function renderDashboard(){
       <button class="btn btn-sm btn-primary" onclick="exportAll()">Backup now</button>
       <button class="btn btn-sm btn-ghost" onclick="dismissBackupReminder()">Later</button>
     </div>` : ''}
-    <div class="statrow">
-      <div class="stat"><div class="num">${students.length}</div><div class="lbl">Student${students.length===1?'':'s'}</div></div>
-      <div class="stat"><div class="num">${totalNeedsAttn}</div><div class="lbl">Recurring mistakes</div></div>
-      <div class="stat"><div class="num">${totalUnreviewed}</div><div class="lbl">Moments to review</div></div>
-      <div class="stat"><div class="num">${totalDue}</div><div class="lbl">Flashcards due</div></div>
-    </div>
+    ${(()=>{ const h=new Date().getHours(); const greeting = h<12?'Good morning':h<18?'Good afternoon':'Good evening'; return `
+    <div class="spotlight">
+      <div class="eyebrow" style="margin-bottom:0">Overview</div>
+      <div class="spotlight-headline">${greeting} — here's where things stand</div>
+      <div class="spotlight-sub">${students.length} student${students.length===1?'':'s'} · ${totalDue} flashcard${totalDue===1?'':'s'} due today</div>
+      <div class="spotlight-stats">
+        <div class="spotlight-stat"><div class="num">${students.length}</div><div class="lbl">Student${students.length===1?'':'s'}</div></div>
+        <div class="spotlight-stat"><div class="num accent">${totalNeedsAttn}</div><div class="lbl">Recurring mistakes</div></div>
+        <div class="spotlight-stat"><div class="num">${totalUnreviewed}</div><div class="lbl">Moments to review</div></div>
+        <div class="spotlight-stat"><div class="num">${totalDue}</div><div class="lbl">Flashcards due</div></div>
+      </div>
+    </div>`; })()}
     ${renderCrossStudentInsights()}
     <div class="dashgrid">
       ${rows.map(r=>`
@@ -2131,13 +2157,13 @@ function renderStudentReport(st){
       </div>
       <button class="btn btn-sm btn-primary" ${st.glossary.length?'':'disabled'} onclick="startPracticeFor(studentModeStudent())">Practice now</button>
     </div>` : ''}
-    <div class="card herocard">
+    <div class="spotlight">
       <div class="sectionhead">
         <div style="display:flex;align-items:center;gap:12px">
           <span class="avatarlg" style="background:${colorFor(st.name)}">${esc(initials(st.name))}</span>
           <div>
-            <h3 style="font-size:19px">Hi ${esc(st.name)} — here's your progress</h3>
-            <div class="mini">${esc(st.lang)} &middot; ${esc(st.level)} &middot; ${st.sessions.length} session${st.sessions.length===1?'':'s'}</div>
+            <div class="spotlight-headline" style="font-size:clamp(19px,2.6vw,24px);margin:0">Hi ${esc(st.name)} — here's your progress</div>
+            <div class="spotlight-sub">${esc(st.lang)} &middot; ${esc(st.level)} &middot; ${st.sessions.length} session${st.sessions.length===1?'':'s'}</div>
           </div>
         </div>
         <div class="no-print" style="display:flex;flex-wrap:wrap;gap:8px">
@@ -2145,13 +2171,13 @@ function renderStudentReport(st){
           <button class="btn btn-sm btn-primary" ${st.glossary.length?'':'disabled'} onclick="startPracticeFor(studentModeStudent())">Practice flashcards${st.glossary.length?` (${srsDueCount(st)} due)`:''}</button>
         </div>
       </div>
-      <div class="statrow" style="margin-bottom:18px">
-        <div class="stat stat-hero"><div class="num">${prog.current===null?'—':prog.current+'%'}</div><div class="lbl">Current average</div></div>
-        <div class="stat stat-hero"><div class="num" style="font-size:20px;padding-top:4px">${trendBadge}</div><div class="lbl">vs your recent average</div></div>
-        <div class="stat stat-hero"><div class="num">${srsMasteredCount(st)}</div><div class="lbl">Words mastered</div></div>
-        <div class="stat stat-hero"><div class="num">${streakIsLive(st)?st.streak.current:0}${streakIsLive(st)&&st.streak.current?' 🔥':''}</div><div class="lbl">Day streak</div></div>
+      <div class="spotlight-stats">
+        <div class="spotlight-stat"><div class="num accent">${prog.current===null?'—':prog.current+'%'}</div><div class="lbl">Current average</div></div>
+        <div class="spotlight-stat"><div class="num" style="font-size:20px;padding-top:8px">${trendBadge}</div><div class="lbl">vs your recent average</div></div>
+        <div class="spotlight-stat"><div class="num">${srsMasteredCount(st)}</div><div class="lbl">Words mastered</div></div>
+        <div class="spotlight-stat"><div class="num">${streakIsLive(st)?st.streak.current:0}${streakIsLive(st)&&st.streak.current?' 🔥':''}</div><div class="lbl">Day streak</div></div>
       </div>
-      <div class="chart-wrap">${chartSVG(st, 260)}</div>
+      <div class="chart-wrap">${chartSVG(st, 260, true)}</div>
     </div>
 
     ${renderMilestones(st)}
