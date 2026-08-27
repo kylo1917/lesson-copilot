@@ -252,7 +252,7 @@ table.sess td.notes{color:var(--text-2);max-width:280px}
 .recbanner.live{background:var(--good-tint);color:var(--good)}
 .recbanner.stalled{background:var(--bad-tint);color:var(--bad)}
 .recbanner.off{background:var(--surface-2);color:var(--text-3);font-weight:500}
-.translog{display:flex;flex-direction:column;gap:4px;max-height:280px;overflow-y:auto;margin-top:6px}
+.translog{display:flex;flex-direction:column;gap:4px;max-height:280px;overflow-y:auto;margin-top:6px;padding:10px;border-radius:12px;background:linear-gradient(180deg, var(--accent-tint), var(--surface-2) 70%)}
 .transline{display:flex;align-items:flex-start;gap:8px;padding:7px 8px;border-radius:8px;border-left:3px solid transparent;font-size:12.5px}
 .transline.tag-repair{border-color:var(--warn);background:color-mix(in oklch, var(--warn) 8%, transparent)}
 .transline.tag-watch{border-color:var(--accent-strong);background:var(--accent-tint)}
@@ -291,11 +291,11 @@ const GTYPES = {
 const LANGMAP = {
   english:'en-US', spanish:'es-ES', french:'fr-FR', german:'de-DE', italian:'it-IT',
   portuguese:'pt-PT', mandarin:'zh-CN', chinese:'zh-CN', japanese:'ja-JP', korean:'ko-KR',
-  russian:'ru-RU', arabic:'ar-SA'
+  russian:'ru-RU', arabic:'ar-SA', polish:'pl-PL'
 };
 const LANGOPTS = [
   ['en-US','English'],['es-ES','Spanish'],['fr-FR','French'],['de-DE','German'],['it-IT','Italian'],
-  ['pt-PT','Portuguese'],['zh-CN','Mandarin'],['ja-JP','Japanese'],['ko-KR','Korean'],['ru-RU','Russian'],['ar-SA','Arabic']
+  ['pt-PT','Portuguese'],['zh-CN','Mandarin'],['ja-JP','Japanese'],['ko-KR','Korean'],['ru-RU','Russian'],['ar-SA','Arabic'],['pl-PL','Polish']
 ];
 function guessLangCode(langName){ return LANGMAP[norm(langName).replace(/\s+/g,'')] || 'en-US'; }
 const TAGMETA = {
@@ -578,6 +578,20 @@ function loadDiarizeSettings(){
 function saveDiarizeSettings(){ localStorage.setItem(DIARIZE_SETTINGS_KEY, JSON.stringify(diarizeSettings)); }
 let diarizeSettings = loadDiarizeSettings();
 
+/* ---------- student's own device preferences (never synced from the tutor's file) ---------- */
+const STUDENT_PREFS_KEY = 'chattercheck_student_prefs_v1';
+function loadStudentPrefs(){
+  try{ const raw = localStorage.getItem(STUDENT_PREFS_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+  return { showCorrections: true };
+}
+function saveStudentPrefs(){ localStorage.setItem(STUDENT_PREFS_KEY, JSON.stringify(studentPrefs)); }
+let studentPrefs = loadStudentPrefs();
+function toggleShowCorrections(){
+  studentPrefs.showCorrections = !studentPrefs.showCorrections;
+  saveStudentPrefs();
+  render();
+}
+
 function openDiarizeSettings(){
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
@@ -678,7 +692,7 @@ function openAddStudent(){
       <datalist id="langList">
         <option>English</option><option>Spanish</option><option>French</option><option>German</option>
         <option>Italian</option><option>Portuguese</option><option>Mandarin</option><option>Japanese</option>
-        <option>Korean</option><option>Russian</option><option>Arabic</option>
+        <option>Korean</option><option>Russian</option><option>Arabic</option><option>Polish</option>
       </datalist>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
         <input type="checkbox" id="nsMinor" style="width:16px;height:16px"> This student is under 18
@@ -735,6 +749,7 @@ function transcriptFor(st, sessionId){
 
 /* ---------- recording & heuristic tagging ---------- */
 let recognizer = null, recActive = false, recState = 'off', recFailStreak = 0, recRestartTimer = null, recStartedAt = 0;
+const COALESCE_WINDOW_MS = 2500; // merge speech-recognition fragments finalized this close together into one line
 function speechSupported(){ return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
 function wordOverlap(a,b){
   const sa = new Set(norm(a).split(' ').filter(Boolean));
@@ -955,12 +970,30 @@ function handleRecResult(e){
   for(let i=e.resultIndex;i<e.results.length;i++){
     const res = e.results[i];
     const text = res[0].transcript.trim();
-    if(res.isFinal){ if(text) pushTranscriptLine(st, live, text); }
+    if(res.isFinal){ if(text) appendOrPushLine(st, live, text); }
     else interim += text;
   }
   if(activeStudent()?.id !== st.id) return;
   const interimEl = document.getElementById('interimLine');
   if(interimEl) interimEl.textContent = interim;
+}
+function appendOrPushLine(st, live, text){
+  // Speech recognition (especially on mobile) often finalizes a single sentence as several
+  // separate fragments in quick succession. Merge fragments landing close together into the
+  // same line instead of showing a run of choppy near-duplicate statements. Never merges into a
+  // diarized line (role set) — those are already coherent, speaker-attributed segments.
+  const last = live.transcript[live.transcript.length-1];
+  const now = Date.now() - live.startedAt;
+  if(last && !last.role && !last.done && (now - last.t) < COALESCE_WINDOW_MS){
+    const prev = live.transcript[live.transcript.length-2];
+    last.text = (last.text + ' ' + text).trim();
+    last.tags = tagLine(st, last.text, prev?prev.text:null);
+    save();
+    const el = document.querySelector(`[data-line="${last.id}"]`);
+    if(el) el.outerHTML = transcriptLineHTML(live.sessionId, last);
+    return;
+  }
+  pushTranscriptLine(st, live, text);
 }
 function pushTranscriptLine(st, live, text, role){
   const prev = live.transcript[live.transcript.length-1];
@@ -2189,7 +2222,11 @@ function renderStudentReport(st){
 
     <div class="grid2">
       <div class="card">
-        <div class="sectionhead"><h3>Things to keep working on</h3><span class="mini mono">${needsAttention.length}</span></div>
+        <div class="sectionhead">
+          <h3>Things to keep working on</h3>
+          <button class="linkbtn muted no-print" style="font-size:11.5px" onclick="toggleShowCorrections()">${studentPrefs.showCorrections?'Hide this section':'Show this section'}</button>
+        </div>
+        ${!studentPrefs.showCorrections ? `<div class="help">Corrections are hidden right now. <button class="linkbtn" onclick="toggleShowCorrections()">Show them</button></div>` : `<div class="mini" style="margin-bottom:8px">${needsAttention.length} flagged</div>
         ${needsAttention.length ? `<div class="stack" style="gap:8px">${needsAttention.map(m=>{
           const c = CATS[m.category];
           return `<div class="mistakecard flagged">
@@ -2202,7 +2239,7 @@ function renderStudentReport(st){
           <button class="btn btn-ghost btn-sm no-print" onclick="showFullLog=!showFullLog;render()">${showFullLog?'Hide':'Show'} ${singles.length} more note${singles.length===1?'':'s'}</button>
           ${showFullLog ? `<div class="quietlist" style="margin-top:8px">${singles.map(m=>`
             <div class="quietrow"><span>${esc(m.text)}</span>${m.correction?`<span class="mini">→ ${esc(m.correction)}</span>`:''}</div>`).join('')}</div>` : ''}
-        </div>` : ''}
+        </div>` : ''}`}
       </div>
 
       <div class="card">
@@ -2292,10 +2329,22 @@ function launchSRec(){
       const text = res[0].transcript.trim();
       if(res.isFinal){
         if(text){
-          studentRecording.transcript.push({ t: Date.now()-studentRecording.startedAt, text });
-          saveStudentRecording();
-          const log = document.getElementById('srecLog');
-          if(log){ log.insertAdjacentHTML('beforeend', `<div class="transline">${esc(text)}</div>`); log.scrollTop = log.scrollHeight; }
+          const now = Date.now();
+          const last = studentRecording.transcript[studentRecording.transcript.length-1];
+          // Mobile speech recognition tends to finalize far more often than desktop — a single
+          // sentence can arrive as several separate "final" fragments. Merge fragments that land
+          // close together in time into one line instead of showing them as separate statements.
+          if(last && (now - studentRecording.startedAt - last.t) < COALESCE_WINDOW_MS){
+            last.text = (last.text + ' ' + text).trim();
+            saveStudentRecording();
+            const log = document.getElementById('srecLog');
+            if(log && log.lastElementChild) log.lastElementChild.textContent = last.text;
+          } else {
+            studentRecording.transcript.push({ t: now-studentRecording.startedAt, text });
+            saveStudentRecording();
+            const log = document.getElementById('srecLog');
+            if(log){ log.insertAdjacentHTML('beforeend', `<div class="transline">${esc(text)}</div>`); log.scrollTop = log.scrollHeight; }
+          }
         }
       } else interim += text;
     }
