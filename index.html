@@ -2549,7 +2549,7 @@ function renderUsefulPhrase(){
     <div class="factcard-content">
       <div style="font-size:23px;font-weight:800;margin:14px auto 8px">${esc(p.term)}</div>
       <div style="font-size:15px;color:var(--text-2);max-width:480px;margin:0 auto 10px">${esc(p.meaning)}</div>
-      <div style="font-size:14px;font-style:italic;color:var(--text-3);max-width:480px;margin:0 auto 20px">"${esc(p.example)}"</div>
+      <div style="font-size:14px;font-style:italic;color:var(--text-3);max-width:480px;margin:0 auto 20px">${esc(p.example)}</div>
     </div>
     <button class="btn btn-primary" onclick="pickUsefulPhrase();render()">Show me another</button>
   </div>`;
