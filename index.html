@@ -175,6 +175,19 @@ a{color:var(--accent-strong)}
 .delta-up{background:var(--good-tint);color:var(--good)}
 .delta-down{background:var(--bad-tint);color:var(--bad)}
 .delta-flat{background:var(--surface-2);color:var(--text-2)}
+@media (prefers-reduced-motion: no-preference){
+  @keyframes fadeSlideIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes popIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
+  @keyframes flamePulse{0%,100%{transform:scale(1)}50%{transform:scale(1.16)}}
+  @keyframes flipReveal{from{opacity:0;transform:rotateX(90deg)}to{opacity:1;transform:rotateX(0)}}
+  .factcard-content{animation:fadeSlideIn .45s cubic-bezier(.2,.7,.3,1)}
+  .badgechip{animation:popIn .35s cubic-bezier(.34,1.56,.64,1) backwards}
+  .streak-flame{display:inline-block;animation:flamePulse 1.8s ease-in-out infinite}
+  .reveal{animation:flipReveal .35s ease}
+  .tabfade{animation:fadeSlideIn .3s ease}
+  .dashcard:hover{transform:translateY(-2px)}
+}
+.dashcard{transition:transform .15s ease, box-shadow .15s ease}
 .badgechip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:100px;background:var(--surface-2);border:1px solid var(--border-soft);font-size:13px;font-weight:600}
 .badgechip.earned{background:var(--gold-tint);color:var(--gold-ink);border-color:color-mix(in oklch, var(--gold) 30%, var(--border-soft))}
 
@@ -346,6 +359,38 @@ function pickFunFact(){
   funFactIdx = next;
 }
 if(funFactIdx===null) pickFunFact();
+
+/* ---------- everyday useful phrases (student-facing, broader than the tutor's construct library) ---------- */
+const USEFUL_PHRASES = [
+  {term:"to be honest", meaning:"used to introduce a candid opinion, even if it's blunt", example:"To be honest, I don't think that's a great idea."},
+  {term:"no worries", meaning:"a casual, friendly way to say it's okay or no problem", example:"No worries, we can reschedule for tomorrow."},
+  {term:"I guess so", meaning:"a soft, slightly uncertain way to agree", example:"\"Do you want to go?\" \"I guess so, why not.\""},
+  {term:"that makes sense", meaning:"showing you understand someone's reasoning", example:"Oh, that makes sense — I didn't know that."},
+  {term:"I'm not sure about that", meaning:"a polite way to express doubt or disagreement", example:"I'm not sure about that, actually — let's double check."},
+  {term:"let's see", meaning:"used when you're thinking, or about to check something", example:"Let's see... I think it's on the second shelf."},
+  {term:"by the way", meaning:"used to introduce a new, loosely related topic", example:"By the way, did you finish that report?"},
+  {term:"I was wondering if...", meaning:"a polite, indirect way to ask for something", example:"I was wondering if you could help me with this."},
+  {term:"it depends", meaning:"used when there's no simple yes-or-no answer", example:"\"Do you like spicy food?\" \"It depends on the dish.\""},
+  {term:"sounds good", meaning:"a casual way to agree to a plan", example:"\"Let's meet at noon.\" \"Sounds good!\""},
+  {term:"I mean...", meaning:"used to clarify, rephrase, or soften what you just said", example:"It's fine, I mean, it's not perfect, but it works."},
+  {term:"anyway", meaning:"used to return to an earlier topic or wrap up what you're saying", example:"Anyway, as I was saying before..."},
+  {term:"I'd rather not", meaning:"a polite way to decline something", example:"\"Want to go out tonight?\" \"I'd rather not, I'm exhausted.\""},
+  {term:"give it a shot", meaning:"to try something, even if you're not sure it'll work", example:"I've never done this before, but I'll give it a shot."},
+  {term:"long story short", meaning:"used to summarize something briefly, skipping the details", example:"Long story short, we missed the flight."},
+  {term:"I couldn't agree more", meaning:"a strong, enthusiastic way to agree", example:"I couldn't agree more with what you just said."},
+  {term:"not a big deal", meaning:"downplaying how important or serious something is", example:"Don't worry about it — it's really not a big deal."},
+  {term:"off the top of my head", meaning:"saying something from memory, without checking first", example:"Off the top of my head, I'd guess around fifty people."},
+  {term:"I see what you mean", meaning:"showing you now understand someone's point", example:"Ah, I see what you mean — that changes things."},
+  {term:"let's play it by ear", meaning:"to decide what to do as things happen, rather than planning ahead", example:"We don't have a fixed plan — let's just play it by ear."},
+];
+let phraseIdx = null;
+function pickUsefulPhrase(){
+  if(USEFUL_PHRASES.length<2){ phraseIdx=0; return; }
+  let next;
+  do{ next = Math.floor(Math.random()*USEFUL_PHRASES.length); }while(next===phraseIdx);
+  phraseIdx = next;
+}
+if(phraseIdx===null) pickUsefulPhrase();
 
 /* ---------- phrasal verb / collocation / idiom library ---------- */
 const PHRASE_LIBRARY = [
@@ -2185,6 +2230,12 @@ function renderStudentImportPrompt(){
         <p class="help">Import it to see your progress, review flagged corrections, and practice your vocabulary with flashcards.</p>
         <button class="btn btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();document.getElementById('studentImportFile').click()">Import your file</button>
       </div>
+      <div class="card dashcard" onclick="practice.active=false;studentTab='phrases';render()">
+        <div class="bigicon" style="font-size:26px;margin-bottom:2px">💬</div>
+        <h3 style="font-size:16px">Sound more natural</h3>
+        <p class="help">Pick up a genuinely useful everyday phrase — the kind of thing native speakers actually say.</p>
+        <button class="btn btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();practice.active=false;studentTab='phrases';render()">See a useful phrase</button>
+      </div>
       <div class="card dashcard" onclick="practice.active=false;studentTab='facts';render()">
         <div class="bigicon" style="font-size:26px;margin-bottom:2px">💡</div>
         <h3 style="font-size:16px">Just here to kill time?</h3>
@@ -2229,7 +2280,7 @@ function renderStudentReport(st){
   <div class="stack">
     ${streakAtRisk(st) ? `
     <div class="card" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-color:var(--warn)">
-      <span style="font-size:22px">🔥</span>
+      <span class="streak-flame" style="font-size:22px">🔥</span>
       <div style="flex:1">
         <div style="font-weight:600">Your ${st.streak.current}-day streak is at risk</div>
         <div class="mini">Review a word or send today's recording to keep it alive.</div>
@@ -2254,7 +2305,7 @@ function renderStudentReport(st){
         <div class="spotlight-stat"><div class="num accent">${prog.current===null?'—':prog.current+'%'}</div><div class="lbl">Current average</div></div>
         <div class="spotlight-stat"><div class="num" style="font-size:20px;padding-top:8px">${trendBadge}</div><div class="lbl">vs your recent average</div></div>
         <div class="spotlight-stat"><div class="num">${srsMasteredCount(st)}</div><div class="lbl">Words mastered</div></div>
-        <div class="spotlight-stat"><div class="num">${streakIsLive(st)?st.streak.current:0}${streakIsLive(st)&&st.streak.current?' 🔥':''}</div><div class="lbl">Day streak</div></div>
+        <div class="spotlight-stat"><div class="num">${streakIsLive(st)?st.streak.current:0}${streakIsLive(st)&&st.streak.current?' <span class="streak-flame">🔥</span>':''}</div><div class="lbl">Day streak</div></div>
       </div>
       <div class="chart-wrap">${chartSVG(st, 260, true)}</div>
     </div>
@@ -2486,8 +2537,21 @@ function renderStudentFunFacts(){
   return `
   <div class="card" style="text-align:center;padding:34px 24px">
     <div class="eyebrow">Fun fact</div>
-    <div style="font-size:19px;line-height:1.5;max-width:520px;margin:14px auto 20px">${esc(FUN_FACTS[funFactIdx])}</div>
+    <div class="factcard-content" style="font-size:19px;line-height:1.5;max-width:520px;margin:14px auto 20px">${esc(FUN_FACTS[funFactIdx])}</div>
     <button class="btn btn-primary" onclick="pickFunFact();render()">Show me another</button>
+  </div>`;
+}
+function renderUsefulPhrase(){
+  const p = USEFUL_PHRASES[phraseIdx];
+  return `
+  <div class="card" style="text-align:center;padding:34px 24px">
+    <div class="eyebrow">Useful phrase</div>
+    <div class="factcard-content">
+      <div style="font-size:23px;font-weight:800;margin:14px auto 8px">${esc(p.term)}</div>
+      <div style="font-size:15px;color:var(--text-2);max-width:480px;margin:0 auto 10px">${esc(p.meaning)}</div>
+      <div style="font-size:14px;font-style:italic;color:var(--text-3);max-width:480px;margin:0 auto 20px">"${esc(p.example)}"</div>
+    </div>
+    <button class="btn btn-primary" onclick="pickUsefulPhrase();render()">Show me another</button>
   </div>`;
 }
 function renderStudentApp(){
@@ -2495,15 +2559,17 @@ function renderStudentApp(){
   const body = practice.active ? renderPractice(st) :
     studentTab==='record' ? renderStudentRecordTab() :
     studentTab==='facts' ? renderStudentFunFacts() :
+    studentTab==='phrases' ? renderUsefulPhrase() :
     !st ? renderStudentImportPrompt() : renderStudentReport(st);
   document.getElementById('app').innerHTML = renderStudentHeader() + `
     <div class="shell" style="padding-top:0">
       <div class="tabs no-print">
         <button class="tab ${studentTab==='progress'?'active':''}" onclick="practice.active=false;studentTab='progress';render()">My progress</button>
         <button class="tab ${studentTab==='record'?'active':''}" onclick="practice.active=false;studentTab='record';render()">Record lesson ${srecActive?'<span class=\"livepip\"></span>':''}</button>
+        <button class="tab ${studentTab==='phrases'?'active':''}" onclick="practice.active=false;studentTab='phrases';render()">Useful phrases</button>
         <button class="tab ${studentTab==='facts'?'active':''}" onclick="practice.active=false;studentTab='facts';render()">Fun facts</button>
       </div>
-      ${body}
+      <div class="tabfade">${body}</div>
     </div>`;
 }
 
