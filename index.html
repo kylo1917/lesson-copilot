@@ -170,6 +170,8 @@ a{color:var(--accent-strong)}
 .delta-up{background:var(--good-tint);color:var(--good)}
 .delta-down{background:var(--bad-tint);color:var(--bad)}
 .delta-flat{background:var(--surface-2);color:var(--text-2)}
+.badgechip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:100px;background:var(--surface-2);border:1px solid var(--border-soft);font-size:13px;font-weight:600}
+.badgechip.earned{background:var(--accent-tint);color:var(--accent-ink);border-color:color-mix(in oklch, var(--accent-strong) 25%, var(--border-soft))}
 
 .glossgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
 .dashgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
@@ -207,6 +209,7 @@ a{color:var(--accent-strong)}
 .sectionhead{display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;margin-bottom:12px}
 .sectionhead h3{font-size:14px}
 .help{font-size:12px;color:var(--text-3);line-height:1.55}
+.briefitem{font-size:13.5px;line-height:1.5}
 .stack{display:flex;flex-direction:column;gap:14px}
 .divider{height:1px;background:var(--border-soft);margin:16px 0}
 table.sess{width:100%;border-collapse:collapse;font-size:12.5px}
@@ -625,6 +628,7 @@ let timerHandle = null;
 let pendingEnd = false;
 let reviewSessionId = null;
 let transcriptShowAll = false;
+let cheatSheetMode = false;
 
 function activeStudent(){ return state.students.find(s=>s.id===state.activeStudentId) || null; }
 
@@ -685,7 +689,7 @@ function toggleMinor(id, val){
   const s = state.students.find(x=>x.id===id); if(!s) return;
   s.isMinor = val; save(); render();
 }
-function selectStudent(id){ state.activeStudentId = id; save(); showFullLog=false; practice.active=false; if(view==='dashboard') view='file'; render(); }
+function selectStudent(id){ state.activeStudentId = id; save(); showFullLog=false; practice.active=false; cheatSheetMode=false; reviewSessionId=null; if(view==='dashboard') view='file'; render(); }
 function deleteStudent(id){
   const s = state.students.find(x=>x.id===id); if(!s) return;
   if(!confirm(`Delete ${s.name}'s entire file? This removes their mistake history and glossary permanently and can't be undone.`)) return;
@@ -1149,26 +1153,57 @@ function openEndSession(){
   overlay.id='modalHost';
   document.body.appendChild(overlay);
 }
+function stopAnyRecording(){
+  if(diarizeRec.stage !== 'idle') stopDiarizedRecording();
+  else stopRecording();
+}
+function generateSessionSummary(st, session){
+  const parts = [`${session.durationMin}-minute session with ${st.name}, scored ${session.rating}%.`];
+  parts.push(session.recurringCount>0
+    ? `${session.recurringCount} recurring mistake${session.recurringCount===1?'':'s'} flagged.`
+    : `No recurring mistakes flagged today.`);
+  if(session.vocabCount>0) parts.push(`${session.vocabCount} new vocabulary term${session.vocabCount===1?'':'s'} added to the glossary.`);
+  return parts.join(' ');
+}
+function showSessionSummary(st, session, unreviewed){
+  closeModal();
+  const overlay = document.createElement('div');
+  overlay.className='overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Session saved</h3>
+      <p class="help">${esc(generateSessionSummary(st, session))}</p>
+      ${unreviewed ? `<p class="mini">${unreviewed} transcript moment${unreviewed===1?'':'s'} still to review when you have time.</p>` : ''}
+      <div class="modalrow">
+        <button class="btn btn-primary" onclick="closeModal();view='file';render()">Done</button>
+      </div>
+    </div>`;
+  overlay.id='modalHost';
+  document.body.appendChild(overlay);
+}
 function confirmEndSession(){
   const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
-  stopRecording();
+  stopAnyRecording();
   const rating = Number(document.getElementById('scoreRange').value);
   const notes = document.getElementById('sessNotes').value.trim();
   const {flagged, firstTime, vocab} = sessionStats(st, live.sessionId);
   const unreviewed = (live.transcript||[]).filter(l=>!l.done && l.tags.length).length;
-  st.sessions.push({
+  const session = {
     id: live.sessionId, date: live.startedAt,
     durationMin: Math.max(1, Math.round((Date.now()-live.startedAt)/60000)),
     rating, notes, mistakeCount: flagged.length+firstTime.length, recurringCount: flagged.length, vocabCount: vocab.length,
     transcript: live.transcript||[], consentConfirmedAt: live.consentConfirmedAt||null
-  });
+  };
+  st.sessions.push(session);
   state.liveSession = null;
-  closeModal(); save(); view='file'; render();
-  toast(unreviewed ? `Saved — ${unreviewed} transcript moment${unreviewed===1?'':'s'} to review when you have time` : 'Session saved to '+st.name+"'s file");
+  view = 'file';
+  save();
+  render();
+  showSessionSummary(st, session, unreviewed);
 }
 function discardSession(){
   if(!confirm('Discard this session? Mistakes and vocabulary already logged will stay in the file, but no session record, transcript or score will be saved.')) return;
-  stopRecording();
+  stopAnyRecording();
   state.liveSession = null; save(); render();
 }
 
@@ -1228,6 +1263,30 @@ function studentUnreviewedCount(st){
 function studentNeedsAttentionCount(st){
   return st.mistakes.filter(m=>m.occurrences.length>1).length;
 }
+function crossStudentInsights(){
+  const byCat = {};
+  state.students.forEach(st=>{
+    const cats = new Set();
+    st.mistakes.filter(m=>m.occurrences.length>1).forEach(m=>cats.add(m.category));
+    cats.forEach(c=>{ byCat[c] = byCat[c] || new Set(); byCat[c].add(st.id); });
+  });
+  return Object.entries(byCat)
+    .filter(([,ids])=>ids.size>=2)
+    .map(([cat,ids])=>({cat, count:ids.size}))
+    .sort((a,b)=>b.count-a.count);
+}
+function renderCrossStudentInsights(){
+  if(state.students.length<2) return '';
+  const insights = crossStudentInsights();
+  if(!insights.length) return '';
+  return `<div class="card no-print">
+    <div class="sectionhead"><h3>Across your students</h3></div>
+    <div class="stack" style="gap:8px">${insights.map(i=>{
+      const c = CATS[i.cat];
+      return `<div class="quietrow"><span class="pill" style="background:var(${c.t});color:var(${c.v})">${c.label}</span><span>${i.count} of ${state.students.length} students have a recurring issue here</span></div>`;
+    }).join('')}</div>
+  </div>`;
+}
 function renderDashboard(){
   const students = state.students;
   const rows = students.map(st=>{
@@ -1262,6 +1321,7 @@ function renderDashboard(){
       <div class="stat"><div class="num">${totalUnreviewed}</div><div class="lbl">Moments to review</div></div>
       <div class="stat"><div class="num">${totalDue}</div><div class="lbl">Flashcards due</div></div>
     </div>
+    ${renderCrossStudentInsights()}
     <div class="dashgrid">
       ${rows.map(r=>`
         <div class="card dashcard" onclick="selectStudent('${r.st.id}')">
@@ -1321,12 +1381,28 @@ function renderHeader(){
 }
 
 /* ---------- render: session view ---------- */
+function renderPreLessonBrief(st){
+  if(!st.sessions.length) return '';
+  const due = srsDueCount(st);
+  const needsAttention = st.mistakes.filter(m=>m.occurrences.length>1).sort((a,b)=>b.occurrences.length-a.occurrences.length).slice(0,3);
+  const watchlist = st.watchlist||[];
+  const items = [];
+  if(due>0) items.push(`<div class="briefitem">🗂️ <strong>${due}</strong> flashcard${due===1?'':'s'} due for review</div>`);
+  needsAttention.forEach(m=>items.push(`<div class="briefitem">⚠️ Recurring: "${esc(m.text)}"${m.correction?` → ${esc(m.correction)}`:''} <span class="mini mono">×${m.occurrences.length}</span></div>`));
+  if(watchlist.length) items.push(`<div class="briefitem">👀 Watching: ${watchlist.map(w=>esc(w)).join(', ')}</div>`);
+  if(!items.length) return '';
+  return `<div class="card" style="max-width:460px;margin:0 auto 14px;text-align:left">
+    <div class="eyebrow" style="margin-bottom:8px">Today's focus</div>
+    <div class="stack" style="gap:6px">${items.join('')}</div>
+  </div>`;
+}
 function renderSession(st){
   const live = liveMistakeFor(st);
   const otherLive = state.liveSession && state.liveSession.studentId!==st.id;
 
   if(!live){
     return `
+    ${renderPreLessonBrief(st)}
     <div class="card" style="text-align:center;padding:34px 20px">
       <div class="eyebrow">Ready when you are</div>
       <h2 style="font-size:18px;margin:8px 0 6px">Start a session with ${esc(st.name)}</h2>
@@ -1487,6 +1563,7 @@ function renderFile(st){
           <div class="mini">${esc(st.lang)} &middot; ${esc(st.level)} &middot; ${st.sessions.length} session${st.sessions.length===1?'':'s'} logged</div>
         </div>
         <div class="no-print" style="display:flex;flex-wrap:wrap;gap:8px">
+          <button class="btn btn-sm" onclick="cheatSheetMode=true;render()">Lesson cheat sheet</button>
           <button class="btn btn-sm" onclick="window.print()">Save as PDF</button>
           <button class="btn btn-sm" onclick="exportStudent('${st.id}')">Export file (.json)</button>
           <button class="btn btn-ghost btn-sm" onclick="deleteStudent('${st.id}')">Delete student</button>
@@ -1603,6 +1680,35 @@ function handleRecordingImport(file){
   };
   reader.readAsText(file);
   document.getElementById('recImportFile').value='';
+}
+function renderCheatSheet(st){
+  const needsAttention = st.mistakes.filter(m=>m.occurrences.length>1).sort((a,b)=>b.occurrences.length-a.occurrences.length);
+  const dueVocab = st.glossary.filter(g=>srsOf(g).nextReview<=Date.now());
+  return `
+  <div class="card">
+    <div class="sectionhead">
+      <div><h3>Lesson cheat sheet — ${esc(st.name)}</h3><div class="mini">${esc(fmtDateFull(Date.now()))}</div></div>
+      <div class="no-print" style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="cheatSheetMode=false;render()">Back</button>
+        <button class="btn btn-sm btn-primary" onclick="window.print()">Print</button>
+      </div>
+    </div>
+    <div class="eyebrow" style="margin:14px 0 8px">Active recurring mistakes</div>
+    ${needsAttention.length ? `<div class="stack" style="gap:8px">${needsAttention.map(m=>{
+      const c = CATS[m.category];
+      return `<div class="mistakecard flagged">
+        <div class="row"><span class="pill" style="background:var(${c.t});color:var(${c.v})">${c.label}</span><span class="count">×${m.occurrences.length}</span></div>
+        <div class="txt">${esc(m.text)}</div>
+        ${m.correction?`<div class="fix">→ ${esc(m.correction)}</div>`:''}
+      </div>`;
+    }).join('')}</div>` : `<div class="help">Nothing active right now — no repeat mistakes flagged yet.</div>`}
+    <div class="eyebrow" style="margin:18px 0 8px">Vocabulary due for review</div>
+    ${dueVocab.length ? `<div class="glossgrid">${dueVocab.map(g=>`
+      <div class="glosscard">
+        <div class="row"><span class="term">${esc(g.term)}</span></div>
+        ${g.meaning?`<div class="meaning">${esc(g.meaning)}</div>`:''}
+      </div>`).join('')}</div>` : `<div class="help">Nothing due right now.</div>`}
+  </div>`;
 }
 function renderReview(st){
   const sess = st.sessions.find(s=>s.id===reviewSessionId);
@@ -1983,6 +2089,26 @@ function renderStudentImportPrompt(){
     </div>
   </div>`;
 }
+function renderMilestones(st){
+  const cats = [
+    { icon:'🔥', suffix:'day streak', val: (st.streak&&st.streak.longest)||0, steps:[3,7,14,30,60,100] },
+    { icon:'🏆', suffix:'words mastered', val: srsMasteredCount(st), steps:[10,25,50,100,200] },
+    { icon:'📅', suffix:'sessions', val: st.sessions.length, steps:[5,10,25,50,100] },
+  ];
+  const chips = cats.map(cat=>{
+    const earned = cat.steps.filter(n=>cat.val>=n);
+    const next = cat.steps.find(n=>cat.val<n);
+    let out = '';
+    if(earned.length) out += `<span class="badgechip earned">${cat.icon} ${earned[earned.length-1]} ${cat.suffix}</span>`;
+    if(next) out += `<span class="badgechip">${cat.icon} ${next} ${cat.suffix} <span class="mini mono">${cat.val}/${next}</span></span>`;
+    return out;
+  }).join('');
+  if(!chips) return '';
+  return `<div class="card">
+    <div class="sectionhead"><h3>Milestones</h3></div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">${chips}</div>
+  </div>`;
+}
 function renderStudentReport(st){
   const prog = progression(st);
   const needsAttention = st.mistakes.filter(m=>m.occurrences.length>1).sort((a,b)=>b.occurrences.length-a.occurrences.length);
@@ -2027,6 +2153,8 @@ function renderStudentReport(st){
       </div>
       <div class="chart-wrap">${chartSVG(st, 260)}</div>
     </div>
+
+    ${renderMilestones(st)}
 
     <div class="grid2">
       <div class="card">
@@ -2281,14 +2409,15 @@ function render(){
     view==='dashboard' ? renderDashboard() :
     practice.active ? renderPractice(st) :
     (view==='file' && reviewSessionId) ? renderReview(st) :
+    (view==='file' && cheatSheetMode) ? renderCheatSheet(st) :
     view==='session' ? renderSession(st) : renderFile(st);
 
   document.getElementById('app').innerHTML = renderHeader() + `
     <div class="shell" style="padding-top:0">
       <div class="tabs no-print">
-        <button class="tab ${view==='dashboard'?'active':''}" onclick="practice.active=false;reviewSessionId=null;view='dashboard';render()">Dashboard</button>
-        <button class="tab ${view==='session'?'active':''}" onclick="practice.active=false;reviewSessionId=null;view='session';render()">Live session ${live?'<span class=\"livepip\"></span>':''}</button>
-        <button class="tab ${view==='file'?'active':''}" onclick="practice.active=false;reviewSessionId=null;view='file';render()">Student file</button>
+        <button class="tab ${view==='dashboard'?'active':''}" onclick="practice.active=false;reviewSessionId=null;cheatSheetMode=false;view='dashboard';render()">Dashboard</button>
+        <button class="tab ${view==='session'?'active':''}" onclick="practice.active=false;reviewSessionId=null;cheatSheetMode=false;view='session';render()">Live session ${live?'<span class=\"livepip\"></span>':''}</button>
+        <button class="tab ${view==='file'?'active':''}" onclick="practice.active=false;reviewSessionId=null;cheatSheetMode=false;view='file';render()">Student file</button>
       </div>
       ${body}
     </div>`;
