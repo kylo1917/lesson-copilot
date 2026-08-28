@@ -690,6 +690,7 @@ function confirmDiarizeSettings(){
 
 let view = 'dashboard'; // 'dashboard' | 'session' | 'file'
 let showFullLog = false;
+let dashSearch = '';
 let practice = { active:false, idx:0, order:[], revealed:false, typeFilter:'all' };
 document.addEventListener('keydown', (e)=>{
   if(!practice.active || practice.finished) return;
@@ -1425,6 +1426,9 @@ function renderDashboard(){
   const totalUnreviewed = rows.reduce((s,r)=>s+r.unreviewed,0);
   const totalDue = rows.reduce((s,r)=>s+r.due,0);
 
+  const q = norm(dashSearch);
+  const visibleRows = q ? rows.filter(r => norm(r.st.name).includes(q) || norm(r.st.lang).includes(q)) : rows;
+
   return `
   <div class="stack">
     ${shouldShowBackupReminder() ? `
@@ -1450,8 +1454,12 @@ function renderDashboard(){
       </div>
     </div>`; })()}
     ${renderCrossStudentInsights()}
+    ${students.length>5 ? `
+    <input type="text" placeholder="Search students by name or language…" value="${esc(dashSearch)}" oninput="dashSearch=this.value;render()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)">
+    ` : ''}
+    ${q && !visibleRows.length ? `<div class="card"><div class="help">No students match "${esc(dashSearch)}".</div></div>` : `
     <div class="dashgrid">
-      ${rows.map(r=>`
+      ${visibleRows.map(r=>`
         <div class="card dashcard" onclick="selectStudent('${r.st.id}')">
           <div class="row">
             <div style="display:flex;align-items:center;gap:9px;min-width:0">
@@ -1479,6 +1487,7 @@ function renderDashboard(){
           </div>
         </div>`).join('')}
     </div>
+    `}
   </div>`;
 }
 
