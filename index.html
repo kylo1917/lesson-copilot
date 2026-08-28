@@ -670,7 +670,14 @@ async function testDiarizeKey(){
   try{
     const resp = await fetch(DIARIZE_TESTKEY_URL, { method:'POST', headers:{ 'X-Nvidia-Api-Key': key } });
     const data = await resp.json();
-    if(data.ok){ resultEl.textContent = '✓ Key works'; resultEl.style.color = 'var(--good)'; }
+    if(data.ok){
+      let msg = '✓ Key works';
+      if(data.tdtDiarization){
+        msg += data.tdtDiarization.ok ? ' · higher-accuracy model: compatible ✓' : ' · higher-accuracy model: not compatible yet';
+      }
+      resultEl.textContent = msg;
+      resultEl.style.color = 'var(--good)';
+    }
     else { resultEl.textContent = data.error || 'Key check failed'; resultEl.style.color = 'var(--bad)'; }
   }catch(e){
     resultEl.textContent = 'Could not reach the check service — check your connection';
