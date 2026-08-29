@@ -124,8 +124,11 @@ a{color:var(--accent-strong)}
 .btn[disabled]{opacity:.4;cursor:not-allowed}
 .icon{width:14px;height:14px;flex:0 0 auto}
 
-.tabs{display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid var(--border-soft)}
-.tab{padding:9px 4px;margin-right:22px;font-size:13.5px;font-weight:500;color:var(--text-3);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs{display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid var(--border-soft);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs .tab{flex:0 0 auto}
+.tab{padding:9px 4px;margin-right:22px;font-size:13.5px;font-weight:500;color:var(--text-3);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+@media (max-width:480px){ .tab{margin-right:14px;font-size:12.5px} }
 .tab.active{color:var(--text);border-color:var(--accent)}
 
 .card{background:var(--surface);border:1px solid var(--border-soft);border-radius:14px;padding:18px 20px;box-shadow:var(--shadow-sm)}
@@ -279,6 +282,13 @@ table.sess td.notes{color:var(--text-2);max-width:280px}
 .watchchips{display:flex;flex-wrap:wrap;gap:6px}
 .watchchip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:4px 8px;border-radius:100px;background:var(--surface-2);border:1px solid var(--border-soft)}
 .reviewbadge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;border-radius:100px;background:var(--warn);color:white;font-size:10px;font-weight:700}
+.tier-label-lib{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-3);margin:4px 0 8px}
+.tier-label-lib.deep{color:var(--gold-ink)}
+.glossgrid.deep .glosscard{border-color:color-mix(in oklch, var(--gold) 35%, var(--border-soft))}
+.lib-questions{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.lib-questions li{font-size:13px;line-height:1.5;padding-left:18px;position:relative;color:var(--text-2)}
+.lib-questions li::before{content:"?";position:absolute;left:0;top:0;color:var(--gold-ink);font-weight:700;font-size:11px}
+.lib-questions.deep li::before{content:"→";color:var(--gold-ink)}
 </style>
 
 <div id="app"></div>
@@ -391,6 +401,145 @@ function pickUsefulPhrase(){
   phraseIdx = next;
 }
 if(phraseIdx===null) pickUsefulPhrase();
+
+/* ---------- lesson library: browsable topics for students, with or without the tutor ---------- */
+// No topic is locked to a level — each has a "core" layer everyone uses and a "deep" layer
+// for students who want to push further. Grouped into categories, each with 2+ subcategories.
+const LESSON_LIBRARY = [
+  { id:'dining-out', category:'Everyday Life', title:'Ordering Food & Dining Out',
+    intro:"Practical language for restaurants and cafés — ordering, special requests, and paying. Low-stakes and immediately useful, which makes it a good early or warm-up topic.",
+    coreVocab:[{term:'reservation',def:'a table booked in advance'},{term:'"Could I get...?"',def:'polite way to order'},{term:'the bill / check',def:'what you pay at the end'},{term:'to go / takeaway',def:'food to eat elsewhere'}],
+    deepVocab:[{term:'to split the bill',def:'share the cost between people'},{term:'allergic to',def:"can't eat something safely"},{term:'starter / appetizer',def:'a small dish before the main course'},{term:'rare / medium / well done',def:'how cooked meat is'}],
+    dialogue:[{who:'Waiter',text:'Are you ready to order, or do you need another minute?'},{who:'You',text:"I think we're ready — I'll have the grilled chicken, please. Could I get that without onions? I'm not a huge fan."},{who:'Waiter',text:'Of course. And for you?'},{who:'Friend',text:'Could we also split an appetizer to start? Maybe the bruschetta.'}],
+    coreQuestions:["What's your favorite restaurant, and what do you usually order there?",'Have you ever had a problem with an order? What happened?',"What's a popular dish from your country you'd recommend to a visitor?"],
+    deepQuestions:['Do you think tipping culture makes sense? Why or why not?','How has eating out changed since you were younger?'] },
+
+  { id:'your-weekend', category:'Everyday Life', title:'Talking About Your Weekend',
+    intro:"Simple past tense in the most natural context there is — this is one of the most common real conversation openers in English, so it's worth being fluent and relaxed with it.",
+    coreVocab:[{term:'"How was your weekend?"',def:'the standard opener'},{term:'to relax',def:'rest, unwind'},{term:'to hang out',def:'spend casual time with someone'},{term:'"Nothing much."',def:'a casual, low-key answer'}],
+    deepVocab:[{term:'to catch up on sleep',def:'get rest you missed'},{term:'to run errands',def:'small tasks like shopping'},{term:'exhausting',def:'very tiring'}],
+    dialogue:[{who:'A',text:'Hey! How was your weekend?'},{who:'B',text:'Pretty good, actually. I finally caught up on some sleep, and I hung out with a few friends on Saturday night. What about you?'},{who:'A',text:'Nothing too exciting — just ran some errands and relaxed. Honestly needed it.'}],
+    coreQuestions:['What did you do last weekend?',"What's your ideal way to spend a Saturday?",'Do you prefer busy weekends or quiet ones? Why?'],
+    deepQuestions:['Do you think how someone spends their weekend says something about their values?','Has your idea of a "good weekend" changed as you\'ve gotten older?'] },
+
+  { id:'small-talk', category:'Conversation & Social Skills', title:'Small Talk & Making Conversation',
+    intro:'The unwritten rules of small talk — safe topics, how to keep a conversation going without it feeling forced, and how to exit politely. Useful for students who find casual conversation harder than formal English.',
+    coreVocab:[{term:'to break the ice',def:'start a conversation easily'},{term:'small talk',def:'light, casual conversation'},{term:'"So, what do you do?"',def:"asking about someone's job"}],
+    deepVocab:[{term:'awkward silence',def:'an uncomfortable pause'},{term:'to keep the conversation going',def:'avoid it dying out'},{term:'"Anyway, I should get going."',def:'a polite way to leave'}],
+    dialogue:[{who:'A',text:'This line is taking forever, huh?'},{who:'B',text:"Tell me about it. At least the weather's nice today."},{who:'A',text:'Yeah, definitely better than yesterday. So, are you from around here?'}],
+    coreQuestions:['What topics count as "small talk" in your culture — are they different from English-speaking ones?','Do you find small talk easy or difficult? Why?','What\'s a good way to start a conversation with a stranger?'],
+    deepQuestions:['Do you think small talk is a waste of time, or genuinely useful?','Is making small talk different for you in English compared to your first language?'] },
+
+  { id:'your-job', category:'Work & Career', title:'Describing Your Job',
+    intro:'Vocabulary and structures for describing responsibilities, opinions about work, and career history — a topic almost every adult student needs sooner or later.',
+    coreVocab:[{term:'coworker',def:'someone you work with'},{term:'day-to-day tasks',def:'regular daily work'},{term:'deadline',def:'the time something is due'}],
+    deepVocab:[{term:'to be in charge of',def:'responsible for something'},{term:'to get promoted',def:'move to a higher position'},{term:'work-life balance',def:'time split between job and life'}],
+    dialogue:[{who:'A',text:'So what do you do?'},{who:'B',text:"I work in marketing — basically, I'm in charge of our social media accounts. Day-to-day, it's a lot of planning posts and hitting deadlines."},{who:'A',text:'Sounds busy. Do you like it?'},{who:'B',text:'Mostly, yeah. The work-life balance could be better, but I like my coworkers a lot.'}],
+    coreQuestions:['What do you like most — and least — about your job?','What was your very first job?','If you could switch careers completely, what would you do?'],
+    deepQuestions:['Do you think your job matches your personality? Why or why not?','How do you think your career or industry will change in the next ten years?'] },
+
+  { id:'travel-stories', category:'Travel', title:'Travel Stories & Past Experiences',
+    intro:'Practices past simple vs. past continuous through natural storytelling — travel mishaps and highlights give students a reason to narrate rather than just answer questions.',
+    coreVocab:[{term:'to get lost',def:'not know where you are'},{term:'to miss a flight',def:'arrive too late to board'},{term:'unforgettable',def:'impossible to forget'}],
+    deepVocab:[{term:'a once-in-a-lifetime experience',def:'something rare and special'},{term:'culture shock',def:'disorientation in a new culture'},{term:'itinerary',def:'a planned travel schedule'}],
+    dialogue:[{who:'A',text:'Has a trip ever gone completely wrong for you?'},{who:'B',text:'Oh, definitely. I was backpacking through Portugal, and I missed my train because I was waiting on the wrong platform. I ended up getting lost trying to find another way there.'},{who:'A',text:'That sounds stressful. How did it end up?'},{who:'B',text:"Actually, it turned into one of the best days of the trip — I found this tiny restaurant I never would've found otherwise."}],
+    coreQuestions:["Tell me about a trip that didn't go as planned.","What's the most beautiful place you've ever visited?",'Where do you want to travel next, and why?'],
+    deepQuestions:['Do you think travel actually changes people, or is that overstated?',"Is there a place you'd never want to visit? Why?"] },
+
+  { id:'opinions', category:'Opinions & Society', title:'Giving Opinions & Agreeing / Disagreeing',
+    intro:'Functional language for discussion and light debate — how to state an opinion, disagree politely, and soften strong statements. Useful groundwork before any "hot topic" conversation.',
+    coreVocab:[{term:'"In my opinion..."',def:'stating a view'},{term:'"I couldn\'t agree more."',def:'strong agreement'},{term:'"I\'m not so sure about that."',def:'gentle doubt'}],
+    deepVocab:[{term:'"I see your point, but..."',def:'softened disagreement'},{term:"to play devil's advocate",def:'argue the other side on purpose'}],
+    dialogue:[{who:'A',text:'In my opinion, remote work is way more productive than being in an office.'},{who:'B',text:'I see your point, but I think it really depends on the person. Some people need that structure.'},{who:'A',text:"That's fair, actually — I hadn't thought about it that way."}],
+    coreQuestions:['Do you think social media does more good or more harm?',"What's an opinion you hold that most people around you disagree with?",'Is it better to work from home or in an office?'],
+    deepQuestions:['Is it ever okay to avoid stating your opinion?','Do you change your mind easily when someone makes a good argument?'] },
+
+  { id:'tech-social-media', category:'Opinions & Society', title:'Technology & Social Media',
+    intro:'A high-frequency modern topic with vocabulary students often know passively but haven\'t practiced saying out loud — good for building confidence with everyday tech vocabulary.',
+    coreVocab:[{term:'to scroll through',def:'browse a feed'},{term:'addicted to my phone',def:"can't put it down"},{term:'screen time',def:'time spent on a device'}],
+    deepVocab:[{term:'to go viral',def:'spread rapidly online'},{term:'doom-scrolling',def:'endlessly scrolling bad news'},{term:'the algorithm',def:'what decides what you see'}],
+    dialogue:[{who:'A',text:"Honestly, I think I'm addicted to my phone. My screen time report last week was terrifying."},{who:'B',text:"Same. I catch myself doom-scrolling right before bed and then wondering why I can't sleep."},{who:'A',text:'Right? The algorithm just knows exactly what to show you.'}],
+    coreQuestions:['How much time do you spend on your phone each day? Does it surprise you?','Has social media changed how you communicate with friends?','Do you think AI will change your job in the next few years?'],
+    deepQuestions:["Do you think we've lost something by communicating mostly through screens?",'Should there be an age limit for social media?'] },
+
+  { id:'future-plans', category:'Future & Goals', title:'Future Plans & Goals',
+    intro:'Practices going to / will / present continuous for the future inside a natural goal-setting conversation, rather than as isolated grammar drills.',
+    coreVocab:[{term:'"I\'m planning to..."',def:'a decided future plan'},{term:'to set a goal',def:'decide on a target'},{term:'to put something off',def:'delay doing it'}],
+    deepVocab:[{term:'in the long run',def:'over a long period of time'},{term:'a five-year plan',def:'longer-term life planning'}],
+    dialogue:[{who:'A',text:'Any plans for this year?'},{who:'B',text:"Actually, yeah — I'm planning to start learning to code. I keep putting it off, but I think it'll be worth it in the long run."},{who:'A',text:"That's a great goal. I'll probably just try to travel more."}],
+    coreQuestions:["What's a goal you're working toward right now?",'Where do you see yourself in five years?',"Is there something you've been putting off that you should just start?"],
+    deepQuestions:["Do you think it's better to have a fixed plan or stay flexible?","How do you usually handle it when things don't go according to plan?"] },
+
+  { id:'health-wellness', category:'Health & Wellness', title:'Health & Wellness',
+    intro:'Everyday vocabulary for talking about health, habits, and stress — practical for describing symptoms, making appointments, or just discussing lifestyle.',
+    coreVocab:[{term:'to work out',def:'exercise'},{term:'under the weather',def:'feeling slightly unwell'},{term:'a check-up',def:'a routine doctor visit'}],
+    deepVocab:[{term:'to come down with something',def:'start getting sick'},{term:'burnt out',def:'exhausted from stress'},{term:'to cut back on',def:'reduce something'}],
+    dialogue:[{who:'A',text:"You've seemed a bit under the weather lately — everything okay?"},{who:'B',text:"Yeah, I think I'm just a little burnt out. I've been meaning to cut back on coffee and actually start working out again."},{who:'A',text:'Honestly, same. Maybe we should hold each other accountable.'}],
+    coreQuestions:['How do you usually deal with stress?',"What's a healthy habit you're proud of keeping up?",'Have you made any changes to your lifestyle recently?'],
+    deepQuestions:['Do you think society is more health-conscious now, or does it just seem that way online?','Is there a health or wellness trend you\'re skeptical of?'] },
+
+  { id:'cultural-differences', category:'Culture & Identity', title:'Cultural Differences',
+    intro:'Every student can discuss this, just at their own depth. A beginner can talk about greetings and food; a strong student can get into generalization and identity. Same topic, same conversation, adjustable depth.',
+    coreVocab:[{term:'custom',def:'a traditional way of doing something'},{term:'tradition',def:'something passed down over time'},{term:'greeting',def:'how you say hello'},{term:'polite / rude',def:'socially acceptable or not'},{term:'different from / similar to',def:'comparing two things'}],
+    deepVocab:[{term:'a generalization',def:'a broad, simplified claim'},{term:'"it varies from person to person"',def:'hedging a claim'},{term:'a cultural norm',def:'an unwritten social rule'},{term:'to take something for granted',def:'not notice its value'},{term:'ethnocentric',def:"judging by your own culture's standards"}],
+    dialogue:[{who:'A',text:'When I moved abroad, the thing that surprised me most was how differently people greeted each other.'},{who:'B',text:"That's interesting — though I think it varies a lot even within one country, not just between them."},{who:'A',text:"True, I probably shouldn't generalize. It definitely broadened my perspective either way."}],
+    coreQuestions:["What's a tradition from your country you like?",'How do people usually greet each other where you\'re from?',"Is there a food that's special or important in your culture?"],
+    deepQuestions:['What\'s a custom from another culture that genuinely surprised you?','Do you think globalization is erasing cultural differences, or just changing them?','What\'s something people often misunderstand about your own culture?'] },
+
+  { id:'shopping-errands', category:'Everyday Life', title:'Shopping & Errands',
+    intro:'Functional shopping vocabulary — trying things on, returns, and payment — plus room to talk about shopping habits more broadly for stronger students.',
+    coreVocab:[{term:'to try something on',def:'test clothing before buying'},{term:'a receipt',def:'proof of purchase'},{term:'on sale',def:'reduced in price'},{term:'cash / card',def:'ways to pay'}],
+    deepVocab:[{term:'to return something',def:'give back for a refund'},{term:'a refund vs. store credit',def:'money back vs. shop-only credit'},{term:"buyer's remorse",def:'regret after purchasing'}],
+    dialogue:[{who:'You',text:'Excuse me, can I try this on?'},{who:'Assistant',text:'Sure, the fitting rooms are right over there.'},{who:'You',text:'Thanks. Actually — do you have this in a different size?'}],
+    coreQuestions:['Do you enjoy shopping, or find it stressful?','Where do you usually buy clothes?','Do you prefer shopping online or in person?'],
+    deepQuestions:['Have you ever had to return something and it was difficult?','Do you think online shopping has changed how people spend money?'] },
+
+  { id:'meeting-new-people', category:'Conversation & Social Skills', title:'Meeting New People',
+    intro:'Introductions and the language around building new connections — a natural companion to the Small Talk topic, focused specifically on first meetings.',
+    coreVocab:[{term:'"Nice to meet you."',def:'standard greeting'},{term:'to introduce yourself',def:'say who you are'},{term:'"How do you know [name]?"',def:'asking about a connection'}],
+    deepVocab:[{term:'to hit it off',def:'get along right away'},{term:'a mutual friend',def:'a friend you both share'},{term:'to lose touch',def:'stop staying in contact'}],
+    dialogue:[{who:'A',text:"Hi, I don't think we've met — I'm Sam."},{who:'B',text:'Nice to meet you, Sam! I\'m Alex. How do you know Maria?'},{who:'A',text:'We used to work together, actually.'}],
+    coreQuestions:['How do you usually meet new people?','Do you find it easy to introduce yourself?',"What's a good icebreaker question?"],
+    deepQuestions:["Do you think it's harder to make friends as an adult?",'Have you ever reconnected with someone after losing touch for years?'] },
+
+  { id:'job-interviews', category:'Work & Career', title:'Job Interviews',
+    intro:'A practical companion to Describing Your Job, focused specifically on interview language — common questions, and how to talk about strengths convincingly.',
+    coreVocab:[{term:'to apply for a job',def:'submit an application'},{term:'a resume / CV',def:'a summary of experience'},{term:'strengths and weaknesses',def:'common interview question'}],
+    deepVocab:[{term:'to negotiate a salary',def:'discuss pay before accepting'},{term:'a follow-up email',def:'a message sent after an interview'},{term:'to stand out',def:'be noticeably better than others'}],
+    dialogue:[{who:'Interviewer',text:'So, tell me a little about yourself.'},{who:'Candidate',text:"Sure — I've been working in customer service for about three years, and I'm really looking to grow into a team lead role."}],
+    coreQuestions:['Have you ever had a job interview? How did it go?','What do you think is your biggest strength at work?','What interview questions do you find hardest to answer?'],
+    deepQuestions:['Have you ever negotiated a job offer? What happened?','What\'s the best way to make yourself stand out to an employer?'] },
+
+  { id:'planning-a-trip', category:'Travel', title:'Planning a Trip',
+    intro:'The "before" to Travel Stories\' "after" — booking, deciding, and the different ways people like to plan (or not plan) a trip.',
+    coreVocab:[{term:'to book a flight',def:'reserve a plane ticket'},{term:'a hotel / hostel',def:'places to stay'},{term:'a suitcase',def:'luggage for a trip'}],
+    deepVocab:[{term:'to be on a budget',def:'limited money to spend'},{term:'a bucket list',def:'things you want to do before you die'},{term:'off the beaten path',def:'not a typical tourist spot'},{term:'to wing it',def:'do something without a plan'}],
+    dialogue:[{who:'A',text:'Have you thought about where we should go this summer?'},{who:'B',text:'Not really — I want somewhere off the beaten path, honestly. Somewhere we can just wing it.'}],
+    coreQuestions:['How do you usually plan a trip?','Do you prefer to book everything in advance?',"What's on your travel bucket list?"],
+    deepQuestions:['Do you prefer planning everything or figuring it out as you go?','Have you ever traveled on a tight budget? How did it go?'] },
+
+  { id:'stress-work-life-balance', category:'Health & Wellness', title:'Stress & Work-Life Balance',
+    intro:'A more focused companion to Health & Wellness — specifically about workload, boundaries, and burnout, which comes up constantly with working adult students.',
+    coreVocab:[{term:'stressed out',def:'feeling a lot of pressure'},{term:'to take a break',def:'pause and rest'},{term:'overwhelmed',def:'unable to cope with too much'}],
+    deepVocab:[{term:'to burn out',def:'become exhausted from stress'},{term:'to set boundaries',def:"limit what you'll accept"},{term:'to unplug',def:'disconnect from work/devices'}],
+    dialogue:[{who:'A',text:'You look a little stressed out today.'},{who:'B',text:"Yeah, honestly, I've been overwhelmed. I think I really need to unplug this weekend."}],
+    coreQuestions:['What do you do when you feel stressed?','Is it easy for you to relax after work?','What helps you take a real break?'],
+    deepQuestions:['Do you find it difficult to set boundaries at work?','Does work ever creep into your personal time? How do you handle it?'] },
+
+  { id:'traditions-celebrations', category:'Culture & Identity', title:'Traditions & Celebrations',
+    intro:'A warmer, more concrete sibling to Cultural Differences — holidays and family traditions are an easy way into identity topics without needing abstract language right away.',
+    coreVocab:[{term:'a holiday',def:'a day of celebration'},{term:'a celebration',def:'an event marking something special'},{term:'a gift',def:'something given to someone'}],
+    deepVocab:[{term:'a ritual',def:'a fixed, repeated practice'},{term:'to pass down',def:'give to the next generation'},{term:'a rite of passage',def:'a ceremony marking a life stage'}],
+    dialogue:[{who:'A',text:"What's your favorite holiday to celebrate?"},{who:'B',text:"Probably New Year's — it's a tradition my family has carried on for generations."}],
+    coreQuestions:["What's your favorite holiday or celebration?",'How do you usually celebrate it?','Is there a gift-giving tradition in your culture?'],
+    deepQuestions:["Is there a tradition in your family that's been passed down for generations?",'Do you think traditions are becoming less important today?'] },
+];
+function libraryCategories(){
+  const order = [];
+  LESSON_LIBRARY.forEach(t=>{ if(!order.includes(t.category)) order.push(t.category); });
+  return order.map(cat=>({ category:cat, topics: LESSON_LIBRARY.filter(t=>t.category===cat) }));
+}
+let libraryExpandedId = null;
 
 /* ---------- phrasal verb / collocation / idiom library ---------- */
 const PHRASE_LIBRARY = [
@@ -636,6 +785,20 @@ function toggleShowCorrections(){
   saveStudentPrefs();
   render();
 }
+function toggleTopicRequest(topicId){
+  studentPrefs.requestedTopics = studentPrefs.requestedTopics || [];
+  const i = studentPrefs.requestedTopics.indexOf(topicId);
+  if(i===-1) studentPrefs.requestedTopics.push(topicId); else studentPrefs.requestedTopics.splice(i,1);
+  saveStudentPrefs();
+  render();
+}
+function copyTopicRequests(){
+  const requested = (studentPrefs.requestedTopics||[]).map(id=>LESSON_LIBRARY.find(t=>t.id===id)).filter(Boolean);
+  if(!requested.length){ toast('Flag a topic first'); return; }
+  const lines = ["Hi! For our next lesson, I'd love to cover:"];
+  requested.forEach(t=>lines.push(`- ${t.title}`));
+  copyText(lines.join('\n'), 'Message copied — paste it to your tutor');
+}
 
 function openDiarizeSettings(){
   const overlay = document.createElement('div');
@@ -759,7 +922,7 @@ function confirmAddStudent(){
   const lang = document.getElementById('nsLang').value.trim() || 'General';
   const level = document.getElementById('nsLevel').value;
   const isMinor = document.getElementById('nsMinor').checked;
-  const st = { id:uid(), name, lang, level, isMinor, color:colorFor(name), createdAt:Date.now(), sessions:[], mistakes:[], glossary:[], watchlist:[], speechLang: guessLangCode(lang) };
+  const st = { id:uid(), name, lang, level, isMinor, color:colorFor(name), createdAt:Date.now(), sessions:[], mistakes:[], glossary:[], watchlist:[], topicRequests:[], speechLang: guessLangCode(lang) };
   state.students.push(st);
   state.activeStudentId = st.id;
   closeModal(); save(); view='session'; render();
@@ -1163,6 +1326,24 @@ function removeWatchTerm(term){
   st.watchlist = (st.watchlist||[]).filter(w=>w!==term);
   save(); render();
 }
+// Topic requests: a student flags a topic in their own Lesson Library tab, then copies a
+// message to send the tutor (same manual, no-server pattern as everything else here — there's
+// no live sync between devices). The tutor logs it here after seeing that message, so it
+// shows up in the pre-lesson brief before the next session.
+function addTopicRequest(){
+  const st = activeStudent(); if(!st) return;
+  const select = document.getElementById('topicRequestSelect');
+  const title = select.value; if(!title) return;
+  st.topicRequests = st.topicRequests || [];
+  if(!st.topicRequests.includes(title)) st.topicRequests.push(title);
+  select.value = '';
+  save(); render();
+}
+function clearTopicRequest(title){
+  const st = activeStudent(); if(!st) return;
+  st.topicRequests = (st.topicRequests||[]).filter(t=>t!==title);
+  save(); render();
+}
 
 function addMistake(st, sessionId, text, correction, category){
   if(!text) return null;
@@ -1527,10 +1708,12 @@ function renderPreLessonBrief(st){
   const due = srsDueCount(st);
   const needsAttention = st.mistakes.filter(m=>m.occurrences.length>1).sort((a,b)=>b.occurrences.length-a.occurrences.length).slice(0,3);
   const watchlist = st.watchlist||[];
+  const topicRequests = st.topicRequests||[];
   const items = [];
   if(due>0) items.push(`<div class="briefitem">🗂️ <strong>${due}</strong> flashcard${due===1?'':'s'} due for review</div>`);
   needsAttention.forEach(m=>items.push(`<div class="briefitem">⚠️ Recurring: "${esc(m.text)}"${m.correction?` → ${esc(m.correction)}`:''} <span class="mini mono">×${m.occurrences.length}</span></div>`));
   if(watchlist.length) items.push(`<div class="briefitem">👀 Watching: ${watchlist.map(w=>esc(w)).join(', ')}</div>`);
+  if(topicRequests.length) items.push(`<div class="briefitem">📌 ${esc(st.name)} asked to cover: ${topicRequests.map(t=>esc(t)).join(', ')}</div>`);
   if(!items.length) return '';
   return `<div class="card" style="max-width:460px;margin:0 auto 14px;text-align:left">
     <div class="eyebrow" style="margin-bottom:8px">Today's focus</div>
@@ -1875,6 +2058,19 @@ function renderFile(st){
           </div>
         </div>`;
       }).join('') : `<div class="help">Nothing taught yet — vocabulary and constructs you add during sessions collect here, grouped by type.</div>`}
+    </div>
+
+    <div class="card no-print">
+      <div class="sectionhead"><h3>Requested topics</h3></div>
+      <p class="help" style="margin-bottom:10px">${esc(st.name)} can browse a lesson topic library on their own device and flag ones they'd like to cover. There's no automatic sync between devices — when they message you about it (or you see it another way), log it here so it shows up in your pre-lesson brief.</p>
+      <div class="watchchips" style="margin-bottom:8px">${(st.topicRequests||[]).map(t=>`<span class="watchchip">${esc(t)}<button class="xbtn" style="margin-left:0" onclick="clearTopicRequest('${jsAttr(t)}')">×</button></span>`).join('') || '<span class="mini">None yet</span>'}</div>
+      <div style="display:flex;gap:6px">
+        <select id="topicRequestSelect" style="flex:1 1 auto;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)">
+          <option value="">Choose a topic ${esc(st.name)} asked about…</option>
+          ${LESSON_LIBRARY.filter(t=>!(st.topicRequests||[]).includes(t.title)).map(t=>`<option value="${jsAttr(t.title)}">${esc(t.title)}</option>`).join('')}
+        </select>
+        <button class="btn btn-sm" onclick="addTopicRequest()">Add</button>
+      </div>
     </div>
 
     ${renderSuggestPanel(st)}
@@ -2236,6 +2432,7 @@ function normalizeStudent(s){
   copy.mistakes = Array.isArray(copy.mistakes) ? copy.mistakes : [];
   copy.glossary = Array.isArray(copy.glossary) ? copy.glossary : [];
   copy.watchlist = Array.isArray(copy.watchlist) ? copy.watchlist : [];
+  copy.topicRequests = Array.isArray(copy.topicRequests) ? copy.topicRequests : [];
   copy.sessions.forEach(sess=>{ if(!Array.isArray(sess.transcript)) sess.transcript = []; });
   copy.mistakes.forEach(m=>{ if(!Array.isArray(m.occurrences)) m.occurrences = []; });
   copy.glossary.forEach(g=>{ if(!Array.isArray(g.occurrences)) g.occurrences = []; });
@@ -2289,6 +2486,10 @@ function buildLessonContext(st){
   if(st.watchlist && st.watchlist.length){
     lines.push('');
     lines.push(`Currently watching for: ${st.watchlist.join(', ')}`);
+  }
+  if(st.topicRequests && st.topicRequests.length){
+    lines.push('');
+    lines.push(`${st.name} asked to cover: ${st.topicRequests.join(', ')}`);
   }
   if(lastSession){
     lines.push('');
@@ -2377,6 +2578,12 @@ function renderStudentImportPrompt(){
         <h3 style="font-size:16px">Already have a file from your tutor?</h3>
         <p class="help">Import it to see your progress, review flagged corrections, and practice your vocabulary with flashcards.</p>
         <button class="btn btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();document.getElementById('studentImportFile').click()">Import your file</button>
+      </div>
+      <div class="card dashcard" onclick="practice.active=false;studentTab='library';render()">
+        <div class="bigicon" style="font-size:26px;margin-bottom:2px">📚</div>
+        <h3 style="font-size:16px">Want to talk about something specific?</h3>
+        <p class="help">Browse real conversation topics and flag ones you'd like to cover in your next lesson.</p>
+        <button class="btn btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();practice.active=false;studentTab='library';render()">Browse the library</button>
       </div>
       <div class="card dashcard" onclick="practice.active=false;studentTab='phrases';render()">
         <div class="bigicon" style="font-size:26px;margin-bottom:2px">💬</div>
@@ -2702,10 +2909,64 @@ function renderUsefulPhrase(){
     <button class="btn btn-primary" onclick="pickUsefulPhrase();render()">Show me another</button>
   </div>`;
 }
+function renderLibraryTopicCard(t, isRequested){
+  const expanded = libraryExpandedId === t.id;
+  return `
+  <div class="card">
+    <div class="row" style="align-items:flex-start;cursor:pointer" onclick="libraryExpandedId=libraryExpandedId==='${t.id}'?null:'${t.id}';render()">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:15px">${esc(t.title)}</div>
+        ${!expanded ? `<div class="mini" style="margin-top:2px">${esc(t.intro)}</div>` : ''}
+      </div>
+      <button class="btn btn-ghost btn-sm no-print" style="flex:0 0 auto" onclick="event.stopPropagation();toggleTopicRequest('${t.id}')">${isRequested?'★ Requested':'☆ Request this'}</button>
+    </div>
+    ${expanded ? `
+    <div class="factcard-content" style="margin-top:14px">
+      <p class="help" style="margin-bottom:16px">${esc(t.intro)}</p>
+      <div class="tier-label-lib">Core vocabulary — everyone</div>
+      <div class="glossgrid" style="margin-bottom:16px">${t.coreVocab.map(v=>`<div class="glosscard"><div class="term">${esc(v.term)}</div><div class="meaning">${esc(v.def)}</div></div>`).join('')}</div>
+      <div class="tier-label-lib deep">Go deeper</div>
+      <div class="glossgrid deep" style="margin-bottom:16px">${t.deepVocab.map(v=>`<div class="glosscard"><div class="term">${esc(v.term)}</div><div class="meaning">${esc(v.def)}</div></div>`).join('')}</div>
+      <div class="eyebrow" style="margin-bottom:8px">Model exchange</div>
+      <div class="translog" style="margin-bottom:16px">${t.dialogue.map(d=>`<div class="transline"><span class="txt"><strong>${esc(d.who)}:</strong> ${esc(d.text)}</span></div>`).join('')}</div>
+      <div class="tier-label-lib">Warm-up questions — everyone</div>
+      <ul class="lib-questions">${t.coreQuestions.map(q=>`<li>${esc(q)}</li>`).join('')}</ul>
+      <div class="tier-label-lib deep" style="margin-top:14px">Go deeper</div>
+      <ul class="lib-questions deep">${t.deepQuestions.map(q=>`<li>${esc(q)}</li>`).join('')}</ul>
+    </div>` : ''}
+  </div>`;
+}
+function renderLibrary(){
+  const requested = studentPrefs.requestedTopics || [];
+  const groups = libraryCategories();
+  return `
+  <div class="stack">
+    <div class="card" style="text-align:center;padding:24px">
+      <div class="eyebrow">Lesson library</div>
+      <h2 style="margin:8px 0 6px;font-size:19px">Pick a topic to explore</h2>
+      <p class="help" style="max-width:480px;margin:0 auto">Real conversation topics — vocabulary, an example exchange, and questions to think about. Every topic works at any level: start with the core basics, or push into "go deeper" for more of a challenge.</p>
+    </div>
+    ${requested.length ? `
+    <div class="card no-print">
+      <div class="sectionhead"><h3>Your requested topics</h3><span class="mini mono">${requested.length}</span></div>
+      <div class="watchchips" style="margin-bottom:10px">${requested.map(id=>{
+        const t = LESSON_LIBRARY.find(x=>x.id===id); if(!t) return '';
+        return `<span class="watchchip">${esc(t.title)}<button class="xbtn" style="margin-left:0" onclick="toggleTopicRequest('${jsAttr(id)}')">×</button></span>`;
+      }).join('')}</div>
+      <button class="btn btn-primary btn-sm" onclick="copyTopicRequests()">Copy message for your tutor</button>
+      <p class="mini" style="margin-top:8px">There's no automatic sync — this copies a short message you can paste to your tutor yourself.</p>
+    </div>` : ''}
+    ${groups.map(g=>`
+      <div class="eyebrow" style="margin:10px 0 2px">${esc(g.category)}</div>
+      <div class="stack" style="gap:10px">${g.topics.map(t=>renderLibraryTopicCard(t, requested.includes(t.id))).join('')}</div>
+    `).join('')}
+  </div>`;
+}
 function renderStudentApp(){
   const st = studentState.student;
   const body = practice.active ? renderPractice(st) :
     studentTab==='record' ? renderStudentRecordTab() :
+    studentTab==='library' ? renderLibrary() :
     studentTab==='facts' ? renderStudentFunFacts() :
     studentTab==='phrases' ? renderUsefulPhrase() :
     !st ? renderStudentImportPrompt() : renderStudentReport(st);
@@ -2714,6 +2975,7 @@ function renderStudentApp(){
       <div class="tabs no-print">
         <button class="tab ${studentTab==='progress'?'active':''}" onclick="practice.active=false;studentTab='progress';render()">My progress</button>
         <button class="tab ${studentTab==='record'?'active':''}" onclick="practice.active=false;studentTab='record';render()">Record lesson ${srecActive?'<span class=\"livepip\"></span>':''}</button>
+        <button class="tab ${studentTab==='library'?'active':''}" onclick="practice.active=false;studentTab='library';render()">Lesson library</button>
         <button class="tab ${studentTab==='phrases'?'active':''}" onclick="practice.active=false;studentTab='phrases';render()">Useful phrases</button>
         <button class="tab ${studentTab==='facts'?'active':''}" onclick="practice.active=false;studentTab='facts';render()">Fun facts</button>
       </div>
