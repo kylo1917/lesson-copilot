@@ -833,7 +833,12 @@ async function testDiarizeKey(){
   try{
     const resp = await fetch(DIARIZE_TESTKEY_URL, { method:'POST', headers:{ 'X-Nvidia-Api-Key': key } });
     const data = await resp.json();
-    if(data.ok){ resultEl.textContent = '✓ Key works'; resultEl.style.color = 'var(--good)'; }
+    if(data.ok){
+      resultEl.textContent = '✓ Key works — saved';
+      resultEl.style.color = 'var(--good)';
+      diarizeSettings = { ...diarizeSettings, nvidiaApiKey:key };
+      saveDiarizeSettings();
+    }
     else { resultEl.textContent = data.error || 'Key check failed'; resultEl.style.color = 'var(--bad)'; }
   }catch(e){
     resultEl.textContent = 'Could not reach the check service — check your connection';
