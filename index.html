@@ -2020,7 +2020,6 @@ function renderFile(st){
       </tbody></table>
       </div>` : ''}
       <input type="file" id="recImportFile" accept="application/json" style="display:none" onchange="handleRecordingImport(this.files[0])">
-      <input type="hidden" id="recImportTarget">
     </div>
 
     <div class="card">
@@ -2092,15 +2091,17 @@ function renderFile(st){
 
 /* ---------- transcript review (after the fact) ---------- */
 function openReview(sessionId){ reviewSessionId = sessionId; render(); }
+let recImportSessionId = null;
 function importRecordingForSession(sessionId){
-  document.getElementById('recImportTarget').value = sessionId;
+  recImportSessionId = sessionId;
   document.getElementById('recImportFile').click();
 }
 function handleRecordingImport(file){
   if(!file) return;
-  const sessionId = document.getElementById('recImportTarget').value;
-  const st = activeStudent(); if(!st) return;
-  const sess = st.sessions.find(s=>s.id===sessionId); if(!sess) return;
+  const sessionId = recImportSessionId;
+  const st = activeStudent();
+  const sess = st && st.sessions.find(s=>s.id===sessionId);
+  if(!st || !sess){ toast("Couldn't tell which session that was for — try clicking Import recording again"); document.getElementById('recImportFile').value=''; return; }
   const reader = new FileReader();
   reader.onload = () => {
     let data;
