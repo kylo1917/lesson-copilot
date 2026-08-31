@@ -2856,7 +2856,7 @@ async function sendStudentRecording(){
   const file = new File([data], filename, { type:'application/json' });
   if(navigator.canShare && navigator.canShare({ files:[file] })){
     try{
-      await navigator.share({ files:[file], title:'Lesson recording', text:'Here’s my Second Chair lesson recording for you to import.' });
+      await navigator.share({ files:[file], title:'Lesson recording', text:'Here’s my ChatterCheck lesson recording for you to import.' });
       toast('Sent!');
       return;
     }catch(e){
