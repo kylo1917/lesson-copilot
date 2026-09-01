@@ -880,11 +880,11 @@ let cheatSheetMode = false;
 
 function activeStudent(){ return state.students.find(s=>s.id===state.activeStudentId) || null; }
 
-function toast(msg){
+function toast(msg, durationMs){
   const host = document.getElementById('toastHost');
   host.innerHTML = '<div class="toast">'+esc(msg)+'</div>';
   clearTimeout(toast._t);
-  toast._t = setTimeout(()=>{ host.innerHTML=''; }, 2600);
+  toast._t = setTimeout(()=>{ host.innerHTML=''; }, durationMs||2600);
 }
 
 /* ---------- student mgmt ---------- */
@@ -1197,7 +1197,8 @@ async function uploadDiarizeChunk(st, live, blob){
     });
     if(!resp.ok){
       const err = await resp.json().catch(()=>({}));
-      toast('Speaker separation hiccup: ' + (err.error || resp.status) + ' — still recording');
+      const detail = err.detail ? ` (${err.detail})` : '';
+      toast('Speaker separation hiccup: ' + (err.error || resp.status) + detail + ' — still recording', 12000);
       return;
     }
     const data = await resp.json();
