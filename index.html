@@ -1111,7 +1111,7 @@ let diarizePcm = null;
 function diarizeEngineState(){
   if(!diarizePcm) return 'not started';
   const buffered = diarizePcm.chunks.reduce((a,c)=>a+c.length, 0);
-  return `engine: ${diarizePcm.ctx.state} · buffered: ${buffered} samples`;
+  return `engine: ${diarizePcm.ctx.state} (${diarizePcm.kind}) · buffered: ${buffered} samples`;
 }
 function encodeWav(samples, sampleRate){
   const pcm = new Int16Array(samples.length);
@@ -1136,6 +1136,37 @@ function flattenPcm(chunks){
   let o=0; for(const c of chunks){ out.set(c,o); o+=c.length; }
   return out;
 }
+// ScriptProcessorNode's onaudioprocess turned out to never fire at all in
+// the desktop app's webview — confirmed live: AudioContext reports
+// 'running', graph is wired correctly, and still zero callbacks, zero
+// samples, indefinitely. AudioWorklet is the modern replacement, runs on
+// a separate audio thread rather than relying on the deprecated main-
+// thread callback, and is tried first; ScriptProcessorNode is kept only
+// as a fallback for engines where AudioWorklet itself isn't available.
+async function setupPcmCapture(stream){
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AudioCtx();
+  if(ctx.state === 'suspended') await ctx.resume().catch(()=>{});
+  const source = ctx.createMediaStreamSource(stream);
+  const silent = ctx.createGain(); silent.gain.value = 0; // avoid audible mic feedback
+  const chunks = [];
+  if(ctx.audioWorklet){
+    try{
+      const workletCode = "class PcmCapture extends AudioWorkletProcessor{process(inputs){const ch=inputs[0]&&inputs[0][0];if(ch&&ch.length)this.port.postMessage(ch.slice());return true;}}registerProcessor('pcm-capture',PcmCapture);";
+      const url = URL.createObjectURL(new Blob([workletCode], { type:'application/javascript' }));
+      await ctx.audioWorklet.addModule(url);
+      URL.revokeObjectURL(url);
+      const node = new AudioWorkletNode(ctx, 'pcm-capture');
+      node.port.onmessage = e => { chunks.push(e.data); };
+      source.connect(node); node.connect(silent); silent.connect(ctx.destination);
+      return { ctx, source, node, silent, chunks, sampleRate: ctx.sampleRate, kind:'worklet' };
+    }catch(e){ /* fall through to ScriptProcessorNode below */ }
+  }
+  const processor = ctx.createScriptProcessor(4096, 1, 1);
+  processor.onaudioprocess = e => { chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+  source.connect(processor); processor.connect(silent); silent.connect(ctx.destination);
+  return { ctx, source, processor, silent, chunks, sampleRate: ctx.sampleRate, kind:'scriptprocessor' };
+}
 function startDiarizedRecording(){
   const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -1146,23 +1177,11 @@ function startDiarizedRecording(){
   diarizeRec = { stage:'calibrating', stream:null, calibrationBlob:null, calibrationDurationMs:0, chunkTimer:null, chunksSent:0, chunksWithSpeech:0 };
   recActive = true;
   updateRecUI();
-  navigator.mediaDevices.getUserMedia({ audio:true }).then(stream=>{
+  navigator.mediaDevices.getUserMedia({ audio:true }).then(async stream=>{
     if(!recActive){ stream.getTracks().forEach(t=>t.stop()); return; } // user hit Stop before the mic prompt resolved
     diarizeRec.stream = stream;
-    let ctx;
     try{
-      ctx = new AudioCtx();
-      const source = ctx.createMediaStreamSource(stream);
-      const processor = ctx.createScriptProcessor(4096, 1, 1);
-      const silent = ctx.createGain(); silent.gain.value = 0; // avoid audible mic feedback
-      const chunks = [];
-      processor.onaudioprocess = e => { chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
-      source.connect(processor); processor.connect(silent); silent.connect(ctx.destination);
-      diarizePcm = { ctx, source, processor, silent, chunks, sampleRate: ctx.sampleRate };
-      // A new AudioContext starts 'suspended' unless explicitly resumed —
-      // onaudioprocess never fires while suspended, so nothing gets
-      // captured, but nothing throws either. Easy to miss entirely.
-      if(ctx.state === 'suspended') ctx.resume().catch(()=>{});
+      diarizePcm = await setupPcmCapture(stream);
     }catch(e){ diarizeRecorderFailed(); return; }
     setTimeout(()=>{ if(recActive) finishCalibration(st, live); }, 4000);
   }).catch(()=>{
@@ -1254,7 +1273,7 @@ function stopDiarizedRecording(){
   if(diarizePcm){
     const samples = flattenPcm(diarizePcm.chunks);
     try{ diarizePcm.source.disconnect(); }catch(e){}
-    try{ diarizePcm.processor.disconnect(); }catch(e){}
+    try{ (diarizePcm.node||diarizePcm.processor).disconnect(); }catch(e){}
     try{ diarizePcm.silent.disconnect(); }catch(e){}
     try{ diarizePcm.ctx.close(); }catch(e){}
     if(samples.length > diarizePcm.sampleRate*0.1 && diarizeRec.calibrationBlob && st && live){
