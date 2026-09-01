@@ -1108,6 +1108,11 @@ let diarizeRec = { stage:'idle', stream:null, calibrationBlob:null, calibrationD
 // ourselves from raw samples sidesteps the browser's encoder entirely, so
 // there's nothing left to be broken.
 let diarizePcm = null;
+function diarizeEngineState(){
+  if(!diarizePcm) return 'not started';
+  const buffered = diarizePcm.chunks.reduce((a,c)=>a+c.length, 0);
+  return `engine: ${diarizePcm.ctx.state} · buffered: ${buffered} samples`;
+}
 function encodeWav(samples, sampleRate){
   const pcm = new Int16Array(samples.length);
   for(let i=0;i<samples.length;i++){
@@ -1268,8 +1273,8 @@ function updateRecUI(){
   const banner = document.getElementById('recBanner');
   if(banner){
     if(diarizeReady()){
-      if(diarizeRec.stage==='calibrating') banner.outerHTML = `<div id="recBanner" class="recbanner live"><span class="dot"></span>Calibrating — please read aloud: "${esc(CALIBRATION_PHRASE)}"</div>`;
-      else if(diarizeRec.stage==='recording') banner.outerHTML = `<div id="recBanner" class="recbanner live"><span class="dot"></span>Recording — speaker-separated · chunks sent: ${diarizeRec.chunksSent||0} (${diarizeRec.chunksWithSpeech||0} with speech)</div>`;
+      if(diarizeRec.stage==='calibrating') banner.outerHTML = `<div id="recBanner" class="recbanner live"><span class="dot"></span>Calibrating — please read aloud: "${esc(CALIBRATION_PHRASE)}" [${diarizeEngineState()}]</div>`;
+      else if(diarizeRec.stage==='recording') banner.outerHTML = `<div id="recBanner" class="recbanner live"><span class="dot"></span>Recording — speaker-separated · chunks sent: ${diarizeRec.chunksSent||0} (${diarizeRec.chunksWithSpeech||0} with speech) [${diarizeEngineState()}]</div>`;
       else banner.outerHTML = `<div id="recBanner" class="recbanner off">Not recording</div>`;
     }
     else if(recState==='listening') banner.outerHTML = `<div id="recBanner" class="recbanner live"><span class="dot"></span>Recording — listening</div>`;
@@ -1603,6 +1608,7 @@ function tickTimer(){
   const sec = Math.floor((Date.now()-state.liveSession.startedAt)/1000);
   const m = String(Math.floor(sec/60)).padStart(2,'0'), s = String(sec%60).padStart(2,'0');
   el.textContent = m+':'+s;
+  if(diarizePcm) updateRecUI();
 }
 
 /* ---------- progression math ---------- */
