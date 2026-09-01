@@ -1076,11 +1076,27 @@ function stopRecording(){
 /* ---------- diarized recording (speaker-separated transcription via NVIDIA Riva) ---------- */
 const CALIBRATION_PHRASE = "The quick brown fox jumps over the lazy dog while learning a new language.";
 const DIARIZE_CHUNK_MS = 60000;
-let diarizeRec = { stage:'idle', stream:null, calibrationBlob:null, calibrationDurationMs:0, mediaRecorder:null, chunkTimer:null };
+let diarizeRec = { stage:'idle', stream:null, calibrationBlob:null, calibrationDurationMs:0, mediaRecorder:null, chunkTimer:null, mimeType:'' };
 
+// Chrome records WebM/Opus fine, but WebKit (Safari, and the desktop app's
+// embedded webview) has never reliably supported that container for
+// MediaRecorder — so this can't be hardcoded. The server re-encodes
+// whatever it receives via ffmpeg (content-sniffed, not extension-based),
+// so any of these is fine as long as the browser can actually produce it.
+function pickDiarizeMimeType(){
+  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/ogg;codecs=opus'];
+  for(const c of candidates){
+    try{ if(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c)) return c; }catch(e){}
+  }
+  return ''; // let the browser pick its own default rather than fail outright
+}
 function startDiarizedRecording(){
   const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
-  diarizeRec = { stage:'calibrating', stream:null, calibrationBlob:null, calibrationDurationMs:0, mediaRecorder:null, chunkTimer:null };
+  if(!window.MediaRecorder){
+    toast("This device can't do speaker-separated recording — turn it off in Settings to use standard recording instead");
+    return;
+  }
+  diarizeRec = { stage:'calibrating', stream:null, calibrationBlob:null, calibrationDurationMs:0, mediaRecorder:null, chunkTimer:null, mimeType: pickDiarizeMimeType() };
   recActive = true;
   updateRecUI();
   navigator.mediaDevices.getUserMedia({ audio:true }).then(stream=>{
@@ -1093,14 +1109,22 @@ function startDiarizedRecording(){
     recActive = false; diarizeRec.stage = 'idle'; updateRecUI();
   });
 }
+function diarizeRecorderFailed(){
+  toast("Speaker-separated recording failed to start on this device — turn it off in Settings to use standard recording instead");
+  recActive = false; diarizeRec.stage = 'idle';
+  try{ diarizeRec.stream && diarizeRec.stream.getTracks().forEach(t=>t.stop()); }catch(e){}
+  updateRecUI();
+}
 function recordCalibrationClip(){
   if(!diarizeRec.stream) return;
   const chunks = [];
-  const mr = new MediaRecorder(diarizeRec.stream, { mimeType:'audio/webm;codecs=opus' });
+  let mr;
+  try{ mr = new MediaRecorder(diarizeRec.stream, diarizeRec.mimeType ? { mimeType: diarizeRec.mimeType } : undefined); }
+  catch(e){ diarizeRecorderFailed(); return; }
   const startedAt = Date.now();
   mr.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
   mr.onstop = () => {
-    diarizeRec.calibrationBlob = new Blob(chunks, { type:'audio/webm' });
+    diarizeRec.calibrationBlob = new Blob(chunks, { type: diarizeRec.mimeType || 'audio/webm' });
     diarizeRec.calibrationDurationMs = Date.now() - startedAt;
     if(!recActive) return; // stopped during calibration
     diarizeRec.stage = 'recording';
@@ -1114,11 +1138,13 @@ function recordCalibrationClip(){
 function runDiarizeChunk(){
   if(!recActive || !diarizeRec.stream) return;
   const chunks = [];
-  const mr = new MediaRecorder(diarizeRec.stream, { mimeType:'audio/webm;codecs=opus' });
+  let mr;
+  try{ mr = new MediaRecorder(diarizeRec.stream, diarizeRec.mimeType ? { mimeType: diarizeRec.mimeType } : undefined); }
+  catch(e){ diarizeRecorderFailed(); return; }
   diarizeRec.mediaRecorder = mr;
   mr.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
   mr.onstop = () => {
-    const blob = new Blob(chunks, { type:'audio/webm' });
+    const blob = new Blob(chunks, { type: diarizeRec.mimeType || 'audio/webm' });
     if(recActive) runDiarizeChunk(); // keep capturing immediately; upload happens alongside
     if(blob.size > 500) uploadDiarizeChunk(blob);
   };
