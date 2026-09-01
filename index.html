@@ -1102,7 +1102,7 @@ function startDiarizedRecording(){
   navigator.mediaDevices.getUserMedia({ audio:true }).then(stream=>{
     if(!recActive){ stream.getTracks().forEach(t=>t.stop()); return; } // user hit Stop before the mic prompt resolved
     diarizeRec.stream = stream;
-    recordCalibrationClip();
+    recordCalibrationClip(st, live);
   }).catch(()=>{
     if(!recActive) return;
     toast('Microphone access was blocked — allow it to record');
@@ -1115,7 +1115,14 @@ function diarizeRecorderFailed(){
   try{ diarizeRec.stream && diarizeRec.stream.getTracks().forEach(t=>t.stop()); }catch(e){}
   updateRecUI();
 }
-function recordCalibrationClip(){
+// st/live are threaded through as explicit arguments (not re-read from
+// state.liveSession) because ending the session clears state.liveSession
+// immediately while the last chunk's upload is still in flight — without
+// this, that final chunk's transcript was silently discarded. `live` stays
+// a valid object to push into even after state.liveSession is nulled,
+// since confirmEndSession keeps the same array reference in the saved
+// session record.
+function recordCalibrationClip(st, live){
   if(!diarizeRec.stream) return;
   const chunks = [];
   let mr;
@@ -1129,13 +1136,13 @@ function recordCalibrationClip(){
     if(!recActive) return; // stopped during calibration
     diarizeRec.stage = 'recording';
     updateRecUI();
-    runDiarizeChunk();
+    runDiarizeChunk(st, live);
   };
   mr.start();
   diarizeRec.mediaRecorder = mr;
   setTimeout(()=>{ if(mr.state!=='inactive'){ try{ mr.stop(); }catch(e){} } }, 4000);
 }
-function runDiarizeChunk(){
+function runDiarizeChunk(st, live){
   if(!recActive || !diarizeRec.stream) return;
   const chunks = [];
   let mr;
@@ -1145,14 +1152,13 @@ function runDiarizeChunk(){
   mr.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
   mr.onstop = () => {
     const blob = new Blob(chunks, { type: diarizeRec.mimeType || 'audio/webm' });
-    if(recActive) runDiarizeChunk(); // keep capturing immediately; upload happens alongside
-    if(blob.size > 500) uploadDiarizeChunk(blob);
+    if(recActive) runDiarizeChunk(st, live); // keep capturing immediately; upload happens alongside
+    if(blob.size > 500) uploadDiarizeChunk(st, live, blob);
   };
   mr.start();
   diarizeRec.chunkTimer = setTimeout(()=>{ if(mr.state!=='inactive'){ try{ mr.stop(); }catch(e){} } }, DIARIZE_CHUNK_MS);
 }
-async function uploadDiarizeChunk(blob){
-  const st = activeStudentForLiveSession(); const live = state.liveSession;
+async function uploadDiarizeChunk(st, live, blob){
   if(!st || !live || !diarizeRec.calibrationBlob) return;
   const form = new FormData();
   form.append('calibration', diarizeRec.calibrationBlob, 'calibration.webm');
