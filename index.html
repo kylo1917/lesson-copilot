@@ -1098,33 +1098,64 @@ function stopRecording(){
 /* ---------- diarized recording (speaker-separated transcription via NVIDIA Riva) ---------- */
 const CALIBRATION_PHRASE = "The quick brown fox jumps over the lazy dog while learning a new language.";
 const DIARIZE_CHUNK_MS = 60000;
-let diarizeRec = { stage:'idle', stream:null, calibrationBlob:null, calibrationDurationMs:0, mediaRecorder:null, chunkTimer:null, mimeType:'' };
-
-// Chrome records WebM/Opus fine, but WebKit (Safari, and the desktop app's
-// embedded webview) has never reliably supported that container for
-// MediaRecorder — so this can't be hardcoded. The server re-encodes
-// whatever it receives via ffmpeg (content-sniffed, not extension-based),
-// so any of these is fine as long as the browser can actually produce it.
-function pickDiarizeMimeType(){
-  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/ogg;codecs=opus'];
-  for(const c of candidates){
-    try{ if(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c)) return c; }catch(e){}
+let diarizeRec = { stage:'idle', stream:null, calibrationBlob:null, calibrationDurationMs:0, chunkTimer:null };
+// Captures raw PCM via Web Audio instead of MediaRecorder. MediaRecorder's
+// container encoding (WebM/Opus, MP4/AAC, ...) turned out to be genuinely
+// broken for audio-only recording in the desktop app's embedded webview —
+// it reports the format as supported and produces a plausible-looking
+// blob, but the file decodes to zero audio samples server-side, every
+// time, regardless of which container was used. Encoding a plain WAV file
+// ourselves from raw samples sidesteps the browser's encoder entirely, so
+// there's nothing left to be broken.
+let diarizePcm = null;
+function encodeWav(samples, sampleRate){
+  const pcm = new Int16Array(samples.length);
+  for(let i=0;i<samples.length;i++){
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    pcm[i] = s < 0 ? s*0x8000 : s*0x7FFF;
   }
-  return ''; // let the browser pick its own default rather than fail outright
+  const buf = new ArrayBuffer(44 + pcm.length*2);
+  const view = new DataView(buf);
+  const writeStr = (o,s)=>{ for(let i=0;i<s.length;i++) view.setUint8(o+i, s.charCodeAt(i)); };
+  writeStr(0,'RIFF'); view.setUint32(4, 36+pcm.length*2, true); writeStr(8,'WAVE');
+  writeStr(12,'fmt '); view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
+  view.setUint32(24,sampleRate,true); view.setUint32(28,sampleRate*2,true);
+  view.setUint16(32,2,true); view.setUint16(34,16,true);
+  writeStr(36,'data'); view.setUint32(40,pcm.length*2,true);
+  let o=44; for(let i=0;i<pcm.length;i++){ view.setInt16(o, pcm[i], true); o+=2; }
+  return new Blob([buf], { type:'audio/wav' });
+}
+function flattenPcm(chunks){
+  let total=0; for(const c of chunks) total+=c.length;
+  const out = new Float32Array(total);
+  let o=0; for(const c of chunks){ out.set(c,o); o+=c.length; }
+  return out;
 }
 function startDiarizedRecording(){
   const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
-  if(!window.MediaRecorder){
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if(!AudioCtx || !navigator.mediaDevices){
     toast("This device can't do speaker-separated recording — turn it off in Settings to use standard recording instead");
     return;
   }
-  diarizeRec = { stage:'calibrating', stream:null, calibrationBlob:null, calibrationDurationMs:0, mediaRecorder:null, chunkTimer:null, mimeType: pickDiarizeMimeType() };
+  diarizeRec = { stage:'calibrating', stream:null, calibrationBlob:null, calibrationDurationMs:0, chunkTimer:null };
   recActive = true;
   updateRecUI();
   navigator.mediaDevices.getUserMedia({ audio:true }).then(stream=>{
     if(!recActive){ stream.getTracks().forEach(t=>t.stop()); return; } // user hit Stop before the mic prompt resolved
     diarizeRec.stream = stream;
-    recordCalibrationClip(st, live);
+    let ctx;
+    try{
+      ctx = new AudioCtx();
+      const source = ctx.createMediaStreamSource(stream);
+      const processor = ctx.createScriptProcessor(4096, 1, 1);
+      const silent = ctx.createGain(); silent.gain.value = 0; // avoid audible mic feedback
+      const chunks = [];
+      processor.onaudioprocess = e => { chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+      source.connect(processor); processor.connect(silent); silent.connect(ctx.destination);
+      diarizePcm = { ctx, source, processor, silent, chunks, sampleRate: ctx.sampleRate };
+    }catch(e){ diarizeRecorderFailed(); return; }
+    setTimeout(()=>{ if(recActive) finishCalibration(st, live); }, 4000);
   }).catch(()=>{
     if(!recActive) return;
     toast('Microphone access was blocked — allow it to record');
@@ -1144,47 +1175,31 @@ function diarizeRecorderFailed(){
 // a valid object to push into even after state.liveSession is nulled,
 // since confirmEndSession keeps the same array reference in the saved
 // session record.
-function recordCalibrationClip(st, live){
-  if(!diarizeRec.stream) return;
-  const chunks = [];
-  let mr;
-  try{ mr = new MediaRecorder(diarizeRec.stream, diarizeRec.mimeType ? { mimeType: diarizeRec.mimeType } : undefined); }
-  catch(e){ diarizeRecorderFailed(); return; }
-  const startedAt = Date.now();
-  mr.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
-  mr.onstop = () => {
-    diarizeRec.calibrationBlob = new Blob(chunks, { type: diarizeRec.mimeType || 'audio/webm' });
-    diarizeRec.calibrationDurationMs = Date.now() - startedAt;
-    if(!recActive) return; // stopped during calibration
-    diarizeRec.stage = 'recording';
-    updateRecUI();
-    runDiarizeChunk(st, live);
-  };
-  mr.start();
-  diarizeRec.mediaRecorder = mr;
-  setTimeout(()=>{ if(mr.state!=='inactive'){ try{ mr.stop(); }catch(e){} } }, 4000);
+function finishCalibration(st, live){
+  if(!diarizePcm) return;
+  const samples = flattenPcm(diarizePcm.chunks);
+  diarizePcm.chunks = [];
+  diarizeRec.calibrationBlob = encodeWav(samples, diarizePcm.sampleRate);
+  diarizeRec.calibrationDurationMs = Math.round(samples.length / diarizePcm.sampleRate * 1000);
+  diarizeRec.stage = 'recording';
+  updateRecUI();
+  scheduleDiarizeChunk(st, live);
 }
-function runDiarizeChunk(st, live){
-  if(!recActive || !diarizeRec.stream) return;
-  const chunks = [];
-  let mr;
-  try{ mr = new MediaRecorder(diarizeRec.stream, diarizeRec.mimeType ? { mimeType: diarizeRec.mimeType } : undefined); }
-  catch(e){ diarizeRecorderFailed(); return; }
-  diarizeRec.mediaRecorder = mr;
-  mr.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
-  mr.onstop = () => {
-    const blob = new Blob(chunks, { type: diarizeRec.mimeType || 'audio/webm' });
-    if(recActive) runDiarizeChunk(st, live); // keep capturing immediately; upload happens alongside
-    if(blob.size > 500) uploadDiarizeChunk(st, live, blob);
-  };
-  mr.start();
-  diarizeRec.chunkTimer = setTimeout(()=>{ if(mr.state!=='inactive'){ try{ mr.stop(); }catch(e){} } }, DIARIZE_CHUNK_MS);
+function scheduleDiarizeChunk(st, live){
+  diarizeRec.chunkTimer = setTimeout(()=>{ cutDiarizeChunk(st, live); }, DIARIZE_CHUNK_MS);
+}
+function cutDiarizeChunk(st, live){
+  if(!diarizePcm) return;
+  const samples = flattenPcm(diarizePcm.chunks);
+  diarizePcm.chunks = [];
+  if(recActive) scheduleDiarizeChunk(st, live); // keep capturing immediately; upload happens alongside
+  if(samples.length > diarizePcm.sampleRate*0.1) uploadDiarizeChunk(st, live, encodeWav(samples, diarizePcm.sampleRate));
 }
 async function uploadDiarizeChunk(st, live, blob){
   if(!st || !live || !diarizeRec.calibrationBlob) return;
   const form = new FormData();
-  form.append('calibration', diarizeRec.calibrationBlob, 'calibration.webm');
-  form.append('chunk', blob, 'chunk.webm');
+  form.append('calibration', diarizeRec.calibrationBlob, 'calibration.wav');
+  form.append('chunk', blob, 'chunk.wav');
   try{
     const resp = await fetch(DIARIZE_PROXY_URL, {
       method:'POST',
@@ -1192,15 +1207,14 @@ async function uploadDiarizeChunk(st, live, blob){
         'X-Nvidia-Api-Key': diarizeSettings.nvidiaApiKey,
         'X-Max-Speakers': String(diarizeSettings.maxSpeakers||2),
         'X-Calibration-Duration-Ms': String(diarizeRec.calibrationDurationMs),
-        'X-Audio-Mime-Type': diarizeRec.mimeType || '',
+        'X-Audio-Mime-Type': 'audio/wav',
       },
       body: form,
     });
     if(!resp.ok){
       const err = await resp.json().catch(()=>({}));
       const detail = err.detail ? ` (${err.detail})` : '';
-      const fmt = ` [recorded as: ${diarizeRec.mimeType || 'browser default, unidentified'}]`;
-      toast('Speaker separation hiccup: ' + (err.error || resp.status) + detail + fmt + ' — still recording', 15000);
+      toast('Speaker separation hiccup: ' + (err.error || resp.status) + detail + ' — still recording', 15000);
       return;
     }
     const data = await resp.json();
@@ -1216,9 +1230,24 @@ async function uploadDiarizeChunk(st, live, blob){
 function stopDiarizedRecording(){
   recActive = false;
   clearTimeout(diarizeRec.chunkTimer);
-  try{ diarizeRec.mediaRecorder && diarizeRec.mediaRecorder.state!=='inactive' && diarizeRec.mediaRecorder.stop(); }catch(e){}
+  // state.liveSession is still valid here even when this was triggered by
+  // ending the session — confirmEndSession calls stopAnyRecording() before
+  // clearing it — so it's safe to read fresh rather than needing it threaded in.
+  const st = activeStudentForLiveSession();
+  const live = state.liveSession;
+  if(diarizePcm){
+    const samples = flattenPcm(diarizePcm.chunks);
+    try{ diarizePcm.source.disconnect(); }catch(e){}
+    try{ diarizePcm.processor.disconnect(); }catch(e){}
+    try{ diarizePcm.silent.disconnect(); }catch(e){}
+    try{ diarizePcm.ctx.close(); }catch(e){}
+    if(samples.length > diarizePcm.sampleRate*0.1 && diarizeRec.calibrationBlob && st && live){
+      uploadDiarizeChunk(st, live, encodeWav(samples, diarizePcm.sampleRate));
+    }
+    diarizePcm = null;
+  }
   try{ diarizeRec.stream && diarizeRec.stream.getTracks().forEach(t=>t.stop()); }catch(e){}
-  diarizeRec = { stage:'idle', stream:null, calibrationBlob:null, calibrationDurationMs:0, mediaRecorder:null, chunkTimer:null };
+  diarizeRec = { stage:'idle', stream:null, calibrationBlob:null, calibrationDurationMs:0, chunkTimer:null };
   updateRecUI();
 }
 
