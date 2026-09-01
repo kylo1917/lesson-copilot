@@ -1192,14 +1192,15 @@ async function uploadDiarizeChunk(st, live, blob){
         'X-Nvidia-Api-Key': diarizeSettings.nvidiaApiKey,
         'X-Max-Speakers': String(diarizeSettings.maxSpeakers||2),
         'X-Calibration-Duration-Ms': String(diarizeRec.calibrationDurationMs),
-        'X-Audio-Mime-Type': diarizeRec.mimeType || 'audio/webm',
+        'X-Audio-Mime-Type': diarizeRec.mimeType || '',
       },
       body: form,
     });
     if(!resp.ok){
       const err = await resp.json().catch(()=>({}));
       const detail = err.detail ? ` (${err.detail})` : '';
-      toast('Speaker separation hiccup: ' + (err.error || resp.status) + detail + ' — still recording', 12000);
+      const fmt = ` [recorded as: ${diarizeRec.mimeType || 'browser default, unidentified'}]`;
+      toast('Speaker separation hiccup: ' + (err.error || resp.status) + detail + fmt + ' — still recording', 15000);
       return;
     }
     const data = await resp.json();
