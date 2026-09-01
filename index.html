@@ -1138,7 +1138,7 @@ function startDiarizedRecording(){
     toast("This device can't do speaker-separated recording — turn it off in Settings to use standard recording instead");
     return;
   }
-  diarizeRec = { stage:'calibrating', stream:null, calibrationBlob:null, calibrationDurationMs:0, chunkTimer:null };
+  diarizeRec = { stage:'calibrating', stream:null, calibrationBlob:null, calibrationDurationMs:0, chunkTimer:null, chunksSent:0, chunksWithSpeech:0 };
   recActive = true;
   updateRecUI();
   navigator.mediaDevices.getUserMedia({ audio:true }).then(stream=>{
@@ -1211,10 +1211,12 @@ async function uploadDiarizeChunk(st, live, blob){
       },
       body: form,
     });
+    diarizeRec.chunksSent = (diarizeRec.chunksSent||0) + 1;
     if(!resp.ok){
       const err = await resp.json().catch(()=>({}));
       const detail = err.detail ? ` (${err.detail})` : '';
       toast('Speaker separation hiccup: ' + (err.error || resp.status) + detail + ' — still recording', 15000);
+      updateRecUI();
       return;
     }
     const data = await resp.json();
@@ -1222,7 +1224,9 @@ async function uploadDiarizeChunk(st, live, blob){
     for(const seg of segments){
       if(seg.text && seg.text.trim()) pushTranscriptLine(st, live, seg.text.trim(), seg.role);
     }
-    if(!segments.length) toast('No speech detected in the last chunk — still recording');
+    if(segments.length) diarizeRec.chunksWithSpeech = (diarizeRec.chunksWithSpeech||0) + 1;
+    else toast('No speech detected in the last chunk — still recording');
+    updateRecUI();
   }catch(e){
     toast('Could not reach the speaker-separation service — still recording, will retry next chunk');
   }
@@ -1258,7 +1262,7 @@ function updateRecUI(){
   if(banner){
     if(diarizeReady()){
       if(diarizeRec.stage==='calibrating') banner.outerHTML = `<div id="recBanner" class="recbanner live"><span class="dot"></span>Calibrating — please read aloud: "${esc(CALIBRATION_PHRASE)}"</div>`;
-      else if(diarizeRec.stage==='recording') banner.outerHTML = `<div id="recBanner" class="recbanner live"><span class="dot"></span>Recording — speaker-separated</div>`;
+      else if(diarizeRec.stage==='recording') banner.outerHTML = `<div id="recBanner" class="recbanner live"><span class="dot"></span>Recording — speaker-separated · chunks sent: ${diarizeRec.chunksSent||0} (${diarizeRec.chunksWithSpeech||0} with speech)</div>`;
       else banner.outerHTML = `<div id="recBanner" class="recbanner off">Not recording</div>`;
     }
     else if(recState==='listening') banner.outerHTML = `<div id="recBanner" class="recbanner live"><span class="dot"></span>Recording — listening</div>`;
