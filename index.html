@@ -921,6 +921,27 @@ function openAddStudent(){
   document.getElementById('nsName').focus();
 }
 function closeModal(){ document.getElementById('modalHost')?.remove(); }
+// Native confirm()/alert() rely on a browser UI delegate that the desktop
+// app's embedded webview doesn't provide — calling confirm() there returns
+// false immediately with no dialog ever shown, silently no-op'ing whatever
+// it was guarding. This is a real modal built the same way the rest of the
+// app's modals are, so it works identically on web and desktop.
+function confirmModal(message, onConfirm, okLabel){
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Are you sure?</h3>
+      <p class="help">${esc(message)}</p>
+      <div class="modalrow">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="confirmModalOkBtn">${esc(okLabel||'Confirm')}</button>
+      </div>
+    </div>`;
+  overlay.id = 'modalHost';
+  document.body.appendChild(overlay);
+  document.getElementById('confirmModalOkBtn').onclick = () => { closeModal(); onConfirm(); };
+}
 function confirmAddStudent(){
   const name = document.getElementById('nsName').value.trim();
   if(!name){ toast('Give the student a name first'); return; }
@@ -940,11 +961,12 @@ function toggleMinor(id, val){
 function selectStudent(id){ state.activeStudentId = id; save(); showFullLog=false; practice.active=false; cheatSheetMode=false; reviewSessionId=null; if(view==='dashboard') view='file'; render(); }
 function deleteStudent(id){
   const s = state.students.find(x=>x.id===id); if(!s) return;
-  if(!confirm(`Delete ${s.name}'s entire file? This removes their mistake history and glossary permanently and can't be undone.`)) return;
-  if(state.liveSession && state.liveSession.studentId===id) state.liveSession=null;
-  state.students = state.students.filter(x=>x.id!==id);
-  if(state.activeStudentId===id) state.activeStudentId = state.students[0]?.id || null;
-  save(); render();
+  confirmModal(`Delete ${s.name}'s entire file? This removes their mistake history and glossary permanently and can't be undone.`, () => {
+    if(state.liveSession && state.liveSession.studentId===id) state.liveSession=null;
+    state.students = state.students.filter(x=>x.id!==id);
+    if(state.activeStudentId===id) state.activeStudentId = state.students[0]?.id || null;
+    save(); render();
+  }, 'Delete student');
 }
 
 /* ---------- live session ---------- */
@@ -1179,9 +1201,11 @@ async function uploadDiarizeChunk(st, live, blob){
       return;
     }
     const data = await resp.json();
-    for(const seg of (data.segments||[])){
+    const segments = data.segments||[];
+    for(const seg of segments){
       if(seg.text && seg.text.trim()) pushTranscriptLine(st, live, seg.text.trim(), seg.role);
     }
+    if(!segments.length) toast('No speech detected in the last chunk — still recording');
   }catch(e){
     toast('Could not reach the speaker-separation service — still recording, will retry next chunk');
   }
@@ -1523,9 +1547,10 @@ function confirmEndSession(){
   showSessionSummary(st, session, unreviewed);
 }
 function discardSession(){
-  if(!confirm('Discard this session? Mistakes and vocabulary already logged will stay in the file, but no session record, transcript or score will be saved.')) return;
-  stopAnyRecording();
-  state.liveSession = null; save(); render();
+  confirmModal('Discard this session? Mistakes and vocabulary already logged will stay in the file, but no session record, transcript or score will be saved.', () => {
+    stopAnyRecording();
+    state.liveSession = null; save(); render();
+  }, 'Discard session');
 }
 
 /* ---------- timer ---------- */
@@ -2140,14 +2165,15 @@ function handleRecordingImport(file){
     try{ data = JSON.parse(reader.result); }catch(e){ toast('That file is not valid JSON'); return; }
     const lines = Array.isArray(data.transcript) ? data.transcript : null;
     if(!lines || !lines.length){ toast("Couldn't find a recording in that file"); return; }
-    if(!confirm("Replace this session's transcript with your student's recording? Mistakes and vocabulary you've already logged stay untouched — only the raw transcript left to review changes.")) return;
-    let prev = null;
-    sess.transcript = lines.map(l=>{
-      const tags = tagLine(st, l.text, prev); prev = l.text;
-      return { id:uid(), t:l.t||0, text:l.text, tags, done:false };
-    });
-    save(); render();
-    toast("Swapped in your student's recording — ready to review");
+    confirmModal("Replace this session's transcript with your student's recording? Mistakes and vocabulary you've already logged stay untouched — only the raw transcript left to review changes.", () => {
+      let prev = null;
+      sess.transcript = lines.map(l=>{
+        const tags = tagLine(st, l.text, prev); prev = l.text;
+        return { id:uid(), t:l.t||0, text:l.text, tags, done:false };
+      });
+      save(); render();
+      toast("Swapped in your student's recording — ready to review");
+    }, 'Replace transcript');
   };
   reader.readAsText(file);
   document.getElementById('recImportFile').value='';
@@ -2875,11 +2901,12 @@ function updateSRecUI(){
   }
 }
 function discardStudentRecording(){
-  if(!confirm('Clear this recording? This cannot be undone.')) return;
-  stopStudentRecording();
-  studentRecording = { startedAt: null, transcript: [] };
-  saveStudentRecording();
-  render();
+  confirmModal('Clear this recording? This cannot be undone.', () => {
+    stopStudentRecording();
+    studentRecording = { startedAt: null, transcript: [] };
+    saveStudentRecording();
+    render();
+  }, 'Clear recording');
 }
 async function sendStudentRecording(){
   if(!studentRecording.transcript.length){ toast('Nothing recorded yet'); return; }
