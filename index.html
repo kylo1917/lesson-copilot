@@ -1154,6 +1154,10 @@ function startDiarizedRecording(){
       processor.onaudioprocess = e => { chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
       source.connect(processor); processor.connect(silent); silent.connect(ctx.destination);
       diarizePcm = { ctx, source, processor, silent, chunks, sampleRate: ctx.sampleRate };
+      // A new AudioContext starts 'suspended' unless explicitly resumed —
+      // onaudioprocess never fires while suspended, so nothing gets
+      // captured, but nothing throws either. Easy to miss entirely.
+      if(ctx.state === 'suspended') ctx.resume().catch(()=>{});
     }catch(e){ diarizeRecorderFailed(); return; }
     setTimeout(()=>{ if(recActive) finishCalibration(st, live); }, 4000);
   }).catch(()=>{
@@ -1179,6 +1183,9 @@ function finishCalibration(st, live){
   if(!diarizePcm) return;
   const samples = flattenPcm(diarizePcm.chunks);
   diarizePcm.chunks = [];
+  if(!samples.length && diarizePcm.ctx.state !== 'running'){
+    toast(`Recording never actually started (audio engine stuck "${diarizePcm.ctx.state}") — try Stop then Start again`, 12000);
+  }
   diarizeRec.calibrationBlob = encodeWav(samples, diarizePcm.sampleRate);
   diarizeRec.calibrationDurationMs = Math.round(samples.length / diarizePcm.sampleRate * 1000);
   diarizeRec.stage = 'recording';
