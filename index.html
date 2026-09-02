@@ -782,6 +782,110 @@ function loadDiarizeSettings(){
 function saveDiarizeSettings(){ localStorage.setItem(DIARIZE_SETTINGS_KEY, JSON.stringify(diarizeSettings)); }
 let diarizeSettings = loadDiarizeSettings();
 
+/* ---------- AI mistake analysis (opt-in, Claude) ---------- */
+/* Same "own localStorage key, never exported" reasoning as the diarize key above. */
+const ANALYSIS_SETTINGS_KEY = 'chattercheck_analysis_settings_v1';
+const ANALYZE_URL = 'https://chattercheck-riva-proxy.vercel.app/api/analyze-transcript';
+const ANALYZE_TESTKEY_URL = 'https://chattercheck-riva-proxy.vercel.app/api/test-anthropic-key';
+function loadAnalysisSettings(){
+  try{ const raw = localStorage.getItem(ANALYSIS_SETTINGS_KEY); if(raw) return JSON.parse(raw); }catch(e){}
+  return { anthropicApiKey:'' };
+}
+function saveAnalysisSettings(){ localStorage.setItem(ANALYSIS_SETTINGS_KEY, JSON.stringify(analysisSettings)); }
+let analysisSettings = loadAnalysisSettings();
+let pendingAnalysis = null; // { sessionId, items:[{text,correction,category,explanation,example}], truncated }
+let analysisInFlight = false;
+
+function openAnalysisSettings(){
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Mistake analysis</h3>
+      <p class="help">Beta feature. Uses Claude (Anthropic's AI) to read a lesson transcript and pull out genuine mistakes with an explanation and example — instead of you scanning the whole transcript by hand. Costs a small amount per analysis; nothing is stored on any server, your key stays only in this browser.</p>
+      <div class="field"><label>Anthropic API key</label><input id="asKey" type="password" placeholder="sk-ant-..." value="${esc(analysisSettings.anthropicApiKey)}"></div>
+      <p class="mini" style="color:var(--warn)">Stored only in this browser — avoid pasting it in on a shared or public computer.</p>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button class="btn btn-sm" onclick="testAnthropicKey()">Test key</button>
+        <span id="asTestResult" class="mini"></span>
+      </div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmAnalysisSettings()">Save</button>
+      </div>
+    </div>`;
+  overlay.id = 'modalHost';
+  document.body.appendChild(overlay);
+}
+async function testAnthropicKey(){
+  const key = document.getElementById('asKey').value.trim();
+  const resultEl = document.getElementById('asTestResult');
+  if(!key){ resultEl.textContent = 'Add a key first'; resultEl.style.color = 'var(--warn)'; return; }
+  resultEl.textContent = 'Checking…'; resultEl.style.color = '';
+  try{
+    const resp = await fetch(ANALYZE_TESTKEY_URL, { method:'POST', headers:{ 'X-Anthropic-Api-Key': key } });
+    const data = await resp.json();
+    if(data.ok){
+      resultEl.textContent = '✓ Key works — saved';
+      resultEl.style.color = 'var(--good)';
+      analysisSettings = { ...analysisSettings, anthropicApiKey:key };
+      saveAnalysisSettings();
+    }
+    else { resultEl.textContent = data.error || 'Key check failed'; resultEl.style.color = 'var(--bad)'; }
+  }catch(e){
+    resultEl.textContent = 'Could not reach the check service — check your connection';
+    resultEl.style.color = 'var(--bad)';
+  }
+}
+function confirmAnalysisSettings(){
+  const key = document.getElementById('asKey').value.trim();
+  analysisSettings = { anthropicApiKey:key };
+  saveAnalysisSettings();
+  closeModal();
+  toast('Saved');
+  render();
+}
+async function analyzeSessionForMistakes(st, sessionId){
+  if(analysisInFlight) return;
+  const sess = st.sessions.find(s=>s.id===sessionId); if(!sess) return;
+  if(!analysisSettings.anthropicApiKey){ openAnalysisSettings(); return; }
+  const lines = (sess.transcript||[]).filter(l=>l.text && l.text.trim());
+  if(!lines.length){ toast('Nothing in this transcript to analyze'); return; }
+  analysisInFlight = true;
+  render();
+  try{
+    const resp = await fetch(ANALYZE_URL, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'X-Anthropic-Api-Key': analysisSettings.anthropicApiKey },
+      body: JSON.stringify({ transcript: lines.map(l=>({text:l.text})), lang: st.lang, watchlist: st.watchlist||[] }),
+    });
+    const data = await resp.json();
+    if(!resp.ok){
+      toast('Analysis failed: ' + (data.error || resp.status), 8000);
+      return;
+    }
+    pendingAnalysis = { sessionId, items: (data.mistakes||[]).map(m=>({...m, dismissed:false})), truncated: !!data.truncated };
+    if(!pendingAnalysis.items.length) toast('No clear mistakes found in this transcript');
+  }catch(e){
+    toast('Could not reach the analysis service — check your connection', 8000);
+  }finally{
+    analysisInFlight = false;
+    render();
+  }
+}
+function acceptAnalysisItem(idx){
+  const st = activeStudent(); if(!st || !pendingAnalysis) return;
+  const item = pendingAnalysis.items[idx]; if(!item) return;
+  addMistake(st, pendingAnalysis.sessionId, item.text, item.correction, item.category, item.explanation, item.example);
+  pendingAnalysis.items.splice(idx,1);
+  save(); render();
+}
+function dismissAnalysisItem(idx){
+  if(!pendingAnalysis) return;
+  pendingAnalysis.items.splice(idx,1);
+  render();
+}
+
 /* ---------- student's own device preferences (never synced from the tutor's file) ---------- */
 const STUDENT_PREFS_KEY = 'chattercheck_student_prefs_v1';
 function loadStudentPrefs(){
@@ -1488,15 +1592,17 @@ function clearTopicRequest(title){
   save(); render();
 }
 
-function addMistake(st, sessionId, text, correction, category){
+function addMistake(st, sessionId, text, correction, category, explanation, example){
   if(!text) return null;
   const key = category+'|'+norm(text);
   let m = st.mistakes.find(x=> (x.category+'|'+norm(x.text))===key );
   if(m){
     if(correction && !m.correction) m.correction = correction;
+    if(explanation && !m.explanation) m.explanation = explanation;
+    if(example && !m.example) m.example = example;
     m.occurrences.push({sessionId, date: Date.now()});
   } else {
-    m = { id:uid(), category, text, correction, occurrences:[{sessionId, date: Date.now()}] };
+    m = { id:uid(), category, text, correction, explanation:explanation||'', example:example||'', occurrences:[{sessionId, date: Date.now()}] };
     st.mistakes.push(m);
   }
   return m;
@@ -2071,6 +2177,8 @@ function renderSession(st){
             </div>
             <div class="txt">${esc(m.text)}</div>
             ${m.correction?`<div class="fix">→ ${esc(m.correction)}</div>`:''}
+            ${m.explanation?`<div class="mini" style="margin-top:2px">${esc(m.explanation)}</div>`:''}
+            ${m.example?`<div class="mini" style="font-style:italic;opacity:.8">"${esc(m.example)}"</div>`:''}
             ${drillBlockHTML('mistake', m.id)}
           </div>`;
         }).join('')}</div>` : `<div class="help">Nothing flagged yet — a mistake shows up here only once it repeats.</div>`}
@@ -2175,6 +2283,8 @@ function renderFile(st){
           </div>
           <div class="txt">${esc(m.text)}</div>
           ${m.correction?`<div class="fix">→ ${esc(m.correction)}</div>`:''}
+          ${m.explanation?`<div class="mini" style="margin-top:2px">${esc(m.explanation)}</div>`:''}
+          ${m.example?`<div class="mini" style="font-style:italic;opacity:.8">"${esc(m.example)}"</div>`:''}
           <div class="mini">last seen ${esc(fmtDate(last.date))}</div>
         </div>`;
       }).join('')}</div>` : `<div class="help">No repeat mistakes yet — recurring patterns will collect here as sessions add up.</div>`}
@@ -2282,6 +2392,7 @@ function renderCheatSheet(st){
         <div class="row"><span class="pill" style="background:var(${c.t});color:var(${c.v})">${c.label}</span><span class="count">×${m.occurrences.length}</span></div>
         <div class="txt">${esc(m.text)}</div>
         ${m.correction?`<div class="fix">→ ${esc(m.correction)}</div>`:''}
+        ${m.explanation?`<div class="mini" style="margin-top:2px">${esc(m.explanation)}</div>`:''}
       </div>`;
     }).join('')}</div>` : `<div class="help">Nothing active right now — no repeat mistakes flagged yet.</div>`}
     <div class="eyebrow" style="margin:18px 0 8px">Vocabulary due for review</div>
@@ -2292,13 +2403,42 @@ function renderCheatSheet(st){
       </div>`).join('')}</div>` : `<div class="help">Nothing due right now.</div>`}
   </div>`;
 }
+function renderAnalysisList(){
+  if(!pendingAnalysis) return '';
+  const items = pendingAnalysis.items;
+  if(!items.length) return `<div class="help">No mistakes left to review from this analysis.</div>`;
+  return `
+    ${pendingAnalysis.truncated ? `<div class="mini" style="color:var(--warn);margin-bottom:8px">This session was long, so only the first part of the transcript was analyzed.</div>` : ''}
+    <div class="stack" style="gap:8px">${items.map((m,i)=>{
+      const c = CATS[m.category] || CATS.usage;
+      return `<div class="mistakecard flagged">
+        <div class="row"><span class="pill" style="background:var(${c.t});color:var(${c.v})">${c.label}</span></div>
+        <div class="txt">${esc(m.text)}</div>
+        ${m.correction?`<div class="fix">→ ${esc(m.correction)}</div>`:''}
+        ${m.explanation?`<div class="mini" style="margin-top:2px">${esc(m.explanation)}</div>`:''}
+        ${m.example?`<div class="mini" style="font-style:italic;opacity:.8">"${esc(m.example)}"</div>`:''}
+        <div class="no-print" style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn btn-sm btn-primary" onclick="acceptAnalysisItem(${i})">Log this mistake</button>
+          <button class="btn btn-sm btn-ghost" onclick="dismissAnalysisItem(${i})">Dismiss</button>
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+}
 function renderReview(st){
   const sess = st.sessions.find(s=>s.id===reviewSessionId);
   if(!sess){ reviewSessionId=null; return renderFile(st); }
   const all = (sess.transcript||[]).filter(l=>!l.done);
   const lines = all.filter(l=>transcriptShowAll || isHighSignal(l));
   const hiddenCount = all.length - lines.length;
+  const showingAnalysis = pendingAnalysis && pendingAnalysis.sessionId===sess.id;
   return `
+  <div class="card no-print">
+    <div class="sectionhead">
+      <h3>AI mistake analysis</h3>
+      ${analysisInFlight ? `<span class="mini">Analyzing…</span>` : `<button class="btn btn-sm" onclick="analyzeSessionForMistakes(activeStudent(), '${sess.id}')">${analysisSettings.anthropicApiKey ? 'Analyze for mistakes' : 'Set up mistake analysis'}</button>`}
+    </div>
+    ${showingAnalysis ? renderAnalysisList() : `<p class="help">Have Claude scan this transcript for genuine grammar, word-choice, and usage mistakes — with an explanation and example for each — instead of scanning it yourself. Small cost per analysis.</p>`}
+  </div>
   <div class="card">
     <div class="sectionhead">
       <div><h3>Reviewing session from ${esc(fmtDateFull(sess.date))}</h3><div class="mini">${all.length} moment${all.length===1?'':'s'} left to review</div></div>
@@ -2828,6 +2968,8 @@ function renderStudentReport(st){
             <div class="row"><span class="pill" style="background:var(${c.t});color:var(${c.v})">${c.label}</span><span class="count">×${m.occurrences.length}</span></div>
             <div class="txt">${esc(m.text)}</div>
             ${m.correction?`<div class="fix">→ ${esc(m.correction)}</div>`:''}
+            ${m.explanation?`<div class="mini" style="margin-top:2px">${esc(m.explanation)}</div>`:''}
+            ${m.example?`<div class="mini" style="font-style:italic;opacity:.8">"${esc(m.example)}"</div>`:''}
           </div>`;
         }).join('')}</div>` : `<div class="help">Nothing repeat-flagged — nice work.</div>`}
         ${singles.length ? `<div style="margin-top:12px">
