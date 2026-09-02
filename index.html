@@ -759,6 +759,16 @@ let studentRecording = loadStudentRecording();
 
 let state = load();
 
+// Raw microphone capture via getUserMedia + Web Audio never delivers a
+// single sample inside the desktop app's embedded webview — confirmed
+// with two independent capture APIs (ScriptProcessorNode, AudioWorklet),
+// both reporting a healthy running audio graph and still zero data. A
+// real platform limitation, not something fixable from here. Speaker
+// separation depends entirely on that capture path, so it's disabled in
+// the desktop app; plain transcription uses system dictation instead,
+// which doesn't go through this broken pipeline at all.
+const IS_DESKTOP_APP = !!(window.__TAURI_INTERNALS__ || window.__TAURI__ || /^tauri:$/.test(location.protocol) || /(^|\.)tauri\.localhost$/.test(location.hostname));
+
 /* ---------- speaker-separated transcription (opt-in, NVIDIA Riva) ---------- */
 /* Kept in its own localStorage key, deliberately separate from `state`, so the
    API key never gets swept into exportAll()/exportStudent() and shared with a student. */
@@ -807,14 +817,15 @@ function openDiarizeSettings(){
     <div class="modal">
       <h3>Speaker-separated transcription</h3>
       <p class="help">Beta feature. Uses NVIDIA's free Riva speech AI to reliably tell your voice apart from your student's — more accurate than the built-in guesswork. Requires your own free NVIDIA API key; nothing is stored on any server, your key stays only in this browser. <a href="https://kylo1917.github.io/chattercheck/privacy.html" target="_blank" rel="noopener">Full privacy details</a></p>
+      ${IS_DESKTOP_APP ? `<p class="mini" style="color:var(--warn)">Not available in the desktop app — the raw microphone capture this needs doesn't work in this app's browser engine (a platform limitation, not a settings problem). Works fine in a regular browser tab. Plain recording below still works normally here.</p>` : ''}
       <div class="field"><label>NVIDIA API key</label><input id="dsKey" type="password" placeholder="nvapi-..." value="${esc(diarizeSettings.nvidiaApiKey)}"></div>
       <p class="mini" style="color:var(--warn)">Stored only in this browser — avoid pasting it in on a shared or public computer.</p>
       <div style="display:flex;align-items:center;gap:10px">
         <button class="btn btn-sm" onclick="testDiarizeKey()">Test key</button>
         <span id="dsTestResult" class="mini"></span>
       </div>
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="dsEnabled" style="width:16px;height:16px" ${diarizeSettings.enabled?'checked':''}> Enable for live sessions
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:${IS_DESKTOP_APP?'not-allowed':'pointer'};opacity:${IS_DESKTOP_APP?'.5':'1'}">
+        <input type="checkbox" id="dsEnabled" style="width:16px;height:16px" ${diarizeSettings.enabled?'checked':''} ${IS_DESKTOP_APP?'disabled':''}> Enable for live sessions
       </label>
       <p class="mini">You'll be asked to read a short calibration phrase at the start of each session so it can tell your voice from your student's.</p>
       <div class="modalrow">
@@ -847,7 +858,7 @@ async function testDiarizeKey(){
 }
 function confirmDiarizeSettings(){
   const key = document.getElementById('dsKey').value.trim();
-  const enabled = document.getElementById('dsEnabled').checked;
+  const enabled = IS_DESKTOP_APP ? false : document.getElementById('dsEnabled').checked;
   if(enabled && !key){ toast('Add your NVIDIA API key first, or leave this switched off'); return; }
   diarizeSettings = { nvidiaApiKey:key, enabled, maxSpeakers:2 };
   saveDiarizeSettings();
@@ -1169,6 +1180,10 @@ async function setupPcmCapture(stream){
 }
 function startDiarizedRecording(){
   const st = activeStudent(); const live = liveMistakeFor(st); if(!live) return;
+  if(IS_DESKTOP_APP){
+    toast("Speaker-separated transcription isn't supported in the desktop app — turn it off in Settings to use plain recording");
+    return;
+  }
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if(!AudioCtx || !navigator.mediaDevices){
     toast("This device can't do speaker-separated recording — turn it off in Settings to use standard recording instead");
@@ -1852,7 +1867,7 @@ function renderPreLessonBrief(st){
   </div>`;
 }
 function renderDiarizeReminder(){
-  if(diarizeSettings.enabled || !diarizeSettings.nvidiaApiKey) return '';
+  if(IS_DESKTOP_APP || diarizeSettings.enabled || !diarizeSettings.nvidiaApiKey) return '';
   return `<div class="card no-print" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-color:var(--accent-strong);max-width:460px;margin:0 auto 14px">
     <span style="font-size:20px">🎙️</span>
     <div style="flex:1">
@@ -1863,6 +1878,7 @@ function renderDiarizeReminder(){
   </div>`;
 }
 function enableDiarizeForSession(){
+  if(IS_DESKTOP_APP){ toast("Speaker-separated transcription isn't supported in the desktop app"); return; }
   diarizeSettings.enabled = true;
   saveDiarizeSettings();
   toast('Speaker-separated transcription turned on');
@@ -1979,7 +1995,7 @@ function renderSession(st){
         ${speechSupported() ? `
         <p class="help">${diarizeReady()
           ? `Speaker-separated mode is on — audio is sent to NVIDIA's Riva speech AI to reliably tell your voice from ${esc(st.name)}'s. You'll read a short calibration phrase when you start recording.`
-          : `Uses Chrome's built-in speech recognition — audio is sent to Google to produce text, nothing audio is stored by this app. Works best over speakers; if you're on headphones it can only hear you, not your student. ${diarizeSettings.nvidiaApiKey ? `<button class="linkbtn" onclick="enableDiarizeForSession()">Turn on speaker separation</button>` : `<button class="linkbtn" onclick="openDiarizeSettings()">Turn on more reliable speaker separation</button>`}`}</p>
+          : `Uses your device's built-in speech recognition — audio is sent to your OS/browser's dictation service to produce text, no audio is stored by this app. Works best over speakers; if you're on headphones it can only hear you, not your student. ${IS_DESKTOP_APP ? '' : (diarizeSettings.nvidiaApiKey ? `<button class="linkbtn" onclick="enableDiarizeForSession()">Turn on speaker separation</button>` : `<button class="linkbtn" onclick="openDiarizeSettings()">Turn on more reliable speaker separation</button>`)}`}</p>
         <div id="recBanner" class="recbanner ${recState==='listening'?'live':recState==='stalled'?'stalled':'off'}">
           ${recState==='listening' ? `<span class="dot"></span>Recording — listening` : recState==='stalled' ? `Recording stopped unexpectedly<button class="btn btn-sm" style="margin-left:auto" onclick="resumeRecording()">Resume</button>` : `Not recording`}
         </div>
