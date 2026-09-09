@@ -786,6 +786,7 @@ let diarizeSettings = loadDiarizeSettings();
 /* Same "own localStorage key, never exported" reasoning as the diarize key above. */
 const ANALYSIS_SETTINGS_KEY = 'chattercheck_analysis_settings_v1';
 const ANALYZE_URL = 'https://chattercheck-riva-proxy.vercel.app/api/analyze-transcript';
+const ANALYZE_LT_URL = 'https://chattercheck-riva-proxy.vercel.app/api/analyze-transcript-lt';
 const ANALYZE_TESTKEY_URL = 'https://chattercheck-riva-proxy.vercel.app/api/test-anthropic-key';
 function loadAnalysisSettings(){
   try{ const raw = localStorage.getItem(ANALYSIS_SETTINGS_KEY); if(raw) return JSON.parse(raw); }catch(e){}
@@ -801,8 +802,8 @@ function openAnalysisSettings(){
   overlay.className = 'overlay';
   overlay.innerHTML = `
     <div class="modal">
-      <h3>Mistake analysis</h3>
-      <p class="help">Beta feature. Uses Claude (Anthropic's AI) to read a lesson transcript and pull out genuine mistakes with an explanation and example — instead of you scanning the whole transcript by hand. Costs a small amount per analysis; nothing is stored on any server, your key stays only in this browser.</p>
+      <h3>Mistake analysis — upgrade to Claude</h3>
+      <p class="help">Mistake analysis works out of the box for free using LanguageTool, an open-source grammar checker — no account needed. Adding your own Anthropic API key switches it to Claude instead, which gives noticeably better, more natural explanations, for a small cost per analysis. Entirely optional. Nothing is stored on any server — your key stays only in this browser.</p>
       <div class="field"><label>Anthropic API key</label><input id="asKey" type="password" placeholder="sk-ant-..." value="${esc(analysisSettings.anthropicApiKey)}"></div>
       <p class="mini" style="color:var(--warn)">Stored only in this browser — avoid pasting it in on a shared or public computer.</p>
       <div style="display:flex;align-items:center;gap:10px">
@@ -845,18 +846,24 @@ function confirmAnalysisSettings(){
   toast('Saved');
   render();
 }
+// Free (LanguageTool) needs no setup at all and is the default engine;
+// Claude is an opt-in upgrade that only kicks in once a key is saved. Same
+// button, same result shape either way — the engine choice is invisible
+// to everything downstream of this function.
 async function analyzeSessionForMistakes(st, sessionId){
   if(analysisInFlight) return;
   const sess = st.sessions.find(s=>s.id===sessionId); if(!sess) return;
-  if(!analysisSettings.anthropicApiKey){ openAnalysisSettings(); return; }
   const lines = (sess.transcript||[]).filter(l=>l.text && l.text.trim());
   if(!lines.length){ toast('Nothing in this transcript to analyze'); return; }
+  const usingClaude = !!analysisSettings.anthropicApiKey;
   analysisInFlight = true;
   render();
   try{
-    const resp = await fetch(ANALYZE_URL, {
+    const resp = await fetch(usingClaude ? ANALYZE_URL : ANALYZE_LT_URL, {
       method:'POST',
-      headers:{ 'Content-Type':'application/json', 'X-Anthropic-Api-Key': analysisSettings.anthropicApiKey },
+      headers: usingClaude
+        ? { 'Content-Type':'application/json', 'X-Anthropic-Api-Key': analysisSettings.anthropicApiKey }
+        : { 'Content-Type':'application/json' },
       body: JSON.stringify({ transcript: lines.map(l=>({text:l.text})), lang: st.lang, watchlist: st.watchlist||[] }),
     });
     const data = await resp.json();
@@ -864,7 +871,7 @@ async function analyzeSessionForMistakes(st, sessionId){
       toast('Analysis failed: ' + (data.error || resp.status), 8000);
       return;
     }
-    pendingAnalysis = { sessionId, items: (data.mistakes||[]).map(m=>({...m, dismissed:false})), truncated: !!data.truncated };
+    pendingAnalysis = { sessionId, engine: usingClaude?'claude':'languagetool', items: (data.mistakes||[]).map(m=>({...m, dismissed:false})), truncated: !!data.truncated };
     if(!pendingAnalysis.items.length) toast('No clear mistakes found in this transcript');
   }catch(e){
     toast('Could not reach the analysis service — check your connection', 8000);
@@ -1110,13 +1117,26 @@ function wordOverlap(a,b){
   return inter/Math.max(sa.size,sb.size);
 }
 const FILLER_RE = /\b(um+|uh+|erm+|like|you know|i mean|sort of|kind of)\b/i;
-const BACKCHANNEL_RE = /^(yeah|yep|yup|okay|ok|alright|all right|right|hmm+|mm+[\s-]?hm+|uh[\s-]?huh|got it|i see|cool|nice|sure|gotcha|great|good|exactly|correct)[.!,?]*$/i;
+const BACKCHANNEL_RE = /^(yeah|yep|yup|okay|ok|alright|all right|right|hmm+|mm+[\s-]?hm+|uh[\s-]?huh|got it|i see|cool|nice|sure|gotcha|great|good|exactly|correct|mhm+|totally|for sure|no doubt|makes sense|i understand|fair enough|of course|indeed)[.!,?]*$/i;
+// Explicit self-correction language — "I mean", "no wait", "actually" — is a much
+// stronger, lower-noise signal than word-overlap with the previous line, and it
+// catches a correction happening WITHIN a single line (e.g. "I go— I mean I
+// went"), which the overlap check can never see since that only compares
+// across separate lines.
+const SELF_CORRECTION_RE = /\b(i mean|sorry,? i mean|no wait|actually,? (i|no|wait)|or rather|let me (rephrase|correct that|say that again)|scratch that|i meant to say|i meant)\b/i;
 const HIGH_SIGNAL_TAGS = new Set(['repair','watch']);
 function isHighSignal(line){ return line.tags.some(t=>HIGH_SIGNAL_TAGS.has(t)); }
 function tagLine(st, text, prevText){
   const tags = [];
   if(FILLER_RE.test(text) || BACKCHANNEL_RE.test(text.trim())) tags.push('filler');
-  if(prevText && norm(prevText)!==norm(text) && wordOverlap(prevText,text) >= 0.5) tags.push('repair');
+  // Word-overlap repair detection is noisy on its own (a tutor echoing back
+  // what a student just said looks identical to a self-correction without
+  // speaker labels) — requiring at least 2 real words in the line cuts out
+  // trivial short-phrase coincidences, and explicit correction language is
+  // trusted independently of overlap since it's a much more direct signal.
+  const wordCount = norm(text).split(' ').filter(Boolean).length;
+  const overlapRepair = prevText && wordCount>=2 && norm(prevText)!==norm(text) && wordOverlap(prevText,text) >= 0.5;
+  if(overlapRepair || SELF_CORRECTION_RE.test(text)) tags.push('repair');
   const watch = st.watchlist||[];
   const lower = text.toLowerCase();
   if(watch.some(w=> w && lower.includes(w.toLowerCase()))) tags.push('watch');
@@ -2406,8 +2426,10 @@ function renderCheatSheet(st){
 function renderAnalysisList(){
   if(!pendingAnalysis) return '';
   const items = pendingAnalysis.items;
-  if(!items.length) return `<div class="help">No mistakes left to review from this analysis.</div>`;
+  const engineLabel = pendingAnalysis.engine==='claude' ? 'Claude' : 'LanguageTool (free)';
+  if(!items.length) return `<div class="help">No mistakes found by ${engineLabel}.</div>`;
   return `
+    <div class="mini" style="margin-bottom:8px;opacity:.7">Analyzed with ${engineLabel}</div>
     ${pendingAnalysis.truncated ? `<div class="mini" style="color:var(--warn);margin-bottom:8px">This session was long, so only the first part of the transcript was analyzed.</div>` : ''}
     <div class="stack" style="gap:8px">${items.map((m,i)=>{
       const c = CATS[m.category] || CATS.usage;
@@ -2434,10 +2456,10 @@ function renderReview(st){
   return `
   <div class="card no-print">
     <div class="sectionhead">
-      <h3>AI mistake analysis</h3>
-      ${analysisInFlight ? `<span class="mini">Analyzing…</span>` : `<button class="btn btn-sm" onclick="analyzeSessionForMistakes(activeStudent(), '${sess.id}')">${analysisSettings.anthropicApiKey ? 'Analyze for mistakes' : 'Set up mistake analysis'}</button>`}
+      <h3>Mistake analysis</h3>
+      ${analysisInFlight ? `<span class="mini">Analyzing…</span>` : `<button class="btn btn-sm btn-primary" onclick="analyzeSessionForMistakes(activeStudent(), '${sess.id}')">Analyze for mistakes</button>`}
     </div>
-    ${showingAnalysis ? renderAnalysisList() : `<p class="help">Have Claude scan this transcript for genuine grammar, word-choice, and usage mistakes — with an explanation and example for each — instead of scanning it yourself. Small cost per analysis.</p>`}
+    ${showingAnalysis ? renderAnalysisList() : `<p class="help">Scans this transcript for genuine grammar, word-choice, and usage mistakes — with an explanation and example for each — instead of you scanning it by hand. Free by default (LanguageTool, no account needed). ${analysisSettings.anthropicApiKey ? '' : `<button class="linkbtn" onclick="openAnalysisSettings()">Upgrade to Claude</button> for noticeably better explanations (small cost, optional).`}</p>`}
   </div>
   <div class="card">
     <div class="sectionhead">
