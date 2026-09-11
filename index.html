@@ -3180,6 +3180,7 @@ function renderStudentRecordTab(){
     <div class="sectionhead"><h3>Record this lesson</h3></div>
     ${speechSupported() ? `
     <p class="help">Click start at the beginning of your lesson and just talk normally — there's nothing else to do. Your tutor will use this afterward; it isn't sent anywhere automatically.</p>
+    <p class="mini" style="margin-bottom:10px">If recording won't start while you're on your call, your browser is probably keeping the microphone for the call itself. Try opening this page in a different browser than the one you're using for the call (or on a second device) — that usually fixes it.</p>
     <div id="srecBanner" class="recbanner ${srecState==='listening'?'live':srecState==='stalled'?'stalled':'off'}">
       ${srecState==='listening' ? `<span class="dot"></span>Recording — listening` : srecState==='stalled' ? `Recording stopped unexpectedly<button class="btn btn-sm" style="margin-left:auto" onclick="resumeStudentRecording()">Resume</button>` : `Ready when you are`}
     </div>
