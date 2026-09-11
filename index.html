@@ -739,7 +739,30 @@ function load(){
   try{ const raw = localStorage.getItem(STORE_KEY); if(raw) return JSON.parse(raw); }catch(e){}
   return { students: [], activeStudentId: null, liveSession: null };
 }
-function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+// There's no server here — everything lives in this browser's localStorage,
+// which every browser caps at roughly 5-10MB per origin. Warn well before
+// that's actually a problem, and fail loudly (not silently) if it's ever
+// hit anyway, since a plain localStorage.setItem throws and would otherwise
+// break whatever action triggered the save with no explanation.
+const STORAGE_WARN_BYTES = 4 * 1024 * 1024; // ~4MB — comfortable buffer under the typical ~5MB ceiling
+function storageUsageBytes(){
+  let total = 0;
+  try{
+    for(let i=0; i<localStorage.length; i++){
+      const key = localStorage.key(i);
+      total += (key.length + (localStorage.getItem(key)||'').length) * 2; // UTF-16 chars ≈ 2 bytes each
+    }
+  }catch(e){}
+  return total;
+}
+function storageNearLimit(){ return storageUsageBytes() > STORAGE_WARN_BYTES; }
+function save(){
+  try{
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  }catch(e){
+    toast("Couldn't save — you're out of storage space. Export a backup, then delete an old student or session to free some up.", 15000);
+  }
+}
 
 const STUDENT_MODE = new URLSearchParams(location.search).get('student') === '1';
 const STUDENT_STORE_KEY = 'lessoncopilot_student_v1';
@@ -1892,6 +1915,15 @@ function renderDashboard(){
       </div>
       <button class="btn btn-sm btn-primary" onclick="exportAll()">Backup now</button>
       <button class="btn btn-sm btn-ghost" onclick="dismissBackupReminder()">Later</button>
+    </div>` : ''}
+    ${storageNearLimit() ? `
+    <div class="card no-print" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-color:var(--warn)">
+      <span style="font-size:20px">⚠️</span>
+      <div style="flex:1">
+        <div style="font-weight:600">Getting close to this browser's storage limit</div>
+        <div class="mini">Everything here lives in this browser only — there's no server. Back up now, then consider deleting an old student or session to free up space before it actually runs out.</div>
+      </div>
+      <button class="btn btn-sm btn-primary" onclick="exportAll()">Backup now</button>
     </div>` : ''}
     ${(()=>{ const h=new Date().getHours(); const greeting = h<12?'Good morning':h<18?'Good afternoon':'Good evening'; return `
     <div class="spotlight">
