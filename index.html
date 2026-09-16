@@ -2551,18 +2551,27 @@ function speakTerm(text, lang){
 }
 function shuffled(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
 
-/* ---------- self-recording pronunciation practice (ephemeral, never saved or sent) ---------- */
-let pronRecorder = null, pronChunks = [], pronBlobUrl = null, pronRecording = false;
+/* ---------- self-recording pronunciation practice ---------- */
+/* The recording is ephemeral and never stored anywhere. It only leaves the
+   device if the student explicitly asks for a pronunciation score, which is
+   a deliberate button press, not automatic — and even then it's scored and
+   discarded, never kept. */
+const PRONOUNCE_URL = 'https://chattercheck-riva-proxy.vercel.app/api/pronounce';
+let pronRecorder = null, pronChunks = [], pronBlob = null, pronBlobUrl = null, pronRecording = false;
+let pronScore = null, pronScoring = false;
+let pronScoringAvailable = null; // null = not checked yet this session, then true/false
 function micRecordingSupported(){ return !!(navigator.mediaDevices && window.MediaRecorder); }
 function resetPronRecording(){
   if(pronRecorder && pronRecording){ try{ pronRecorder.stop(); }catch(e){} }
   if(pronBlobUrl){ URL.revokeObjectURL(pronBlobUrl); pronBlobUrl = null; }
-  pronRecorder = null; pronChunks = []; pronRecording = false;
+  pronRecorder = null; pronChunks = []; pronBlob = null; pronRecording = false;
+  pronScore = null; pronScoring = false;
 }
 async function togglePronRecording(){
   if(pronRecording){ try{ pronRecorder.stop(); }catch(e){} return; }
   if(!micRecordingSupported()){ toast('Recording your own voice needs a modern browser'); return; }
   if(pronBlobUrl){ URL.revokeObjectURL(pronBlobUrl); pronBlobUrl = null; }
+  pronBlob = null; pronScore = null;
   try{
     const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
     pronChunks = [];
@@ -2571,9 +2580,11 @@ async function togglePronRecording(){
     pronRecorder.onstop = () => {
       stream.getTracks().forEach(t=>t.stop());
       const blob = new Blob(pronChunks, { type:'audio/webm' });
+      pronBlob = blob.size ? blob : null;
       pronBlobUrl = blob.size ? URL.createObjectURL(blob) : null;
       pronRecording = false;
       render();
+      probePronScoring();
     };
     pronRecorder.start();
     pronRecording = true;
@@ -2583,6 +2594,45 @@ async function togglePronRecording(){
   }
 }
 function playPronRecording(){ if(pronBlobUrl) new Audio(pronBlobUrl).play().catch(()=>{}); }
+// Asks once per session whether scoring is switched on server-side, so the
+// button never appears for a student who'd only get an error from pressing it.
+async function probePronScoring(){
+  if(pronScoringAvailable !== null) return;
+  try{
+    const resp = await fetch(PRONOUNCE_URL);
+    const data = await resp.json();
+    pronScoringAvailable = !!data.available;
+  }catch(e){ pronScoringAvailable = false; }
+  render();
+}
+async function checkPronunciation(term, langCode){
+  if(pronScoring || !pronBlob) return;
+  pronScoring = true; pronScore = null; render();
+  try{
+    const form = new FormData();
+    form.append('audio', pronBlob, 'clip.webm');
+    form.append('reference', term);
+    form.append('language', langCode || 'en-US');
+    const resp = await fetch(PRONOUNCE_URL, { method:'POST', body: form });
+    const data = await resp.json();
+    if(!resp.ok){
+      toast(data.error === 'not_configured' ? 'Pronunciation scoring is not set up yet' : ('Could not score that: ' + (data.error || resp.status)), 8000);
+      if(data.error === 'not_configured') pronScoringAvailable = false;
+    } else if(data.noSpeech){
+      toast("Couldn't make out any speech in that recording — try again a bit louder", 8000);
+    } else {
+      pronScore = data;
+    }
+  }catch(e){
+    toast('Could not reach the scoring service — check your connection', 8000);
+  }finally{
+    pronScoring = false;
+    render();
+  }
+}
+function pronScoreColour(score){
+  return score >= 80 ? 'var(--good)' : score >= 60 ? 'var(--warn)' : 'var(--bad)';
+}
 
 function startPractice(id){
   startPracticeFor(state.students.find(s=>s.id===id));
@@ -2698,8 +2748,16 @@ function renderPractice(st){
           <button class="btn btn-sm ${pronRecording?'recbtn':''}" onclick="togglePronRecording()">${pronRecording?'⏹ Stop':'🎙️ Record yourself'}</button>
           ${pronRecording?'<span class="recdotsm"></span>':''}
           ${pronBlobUrl?`<button class="btn btn-sm btn-primary" onclick="playPronRecording()">▶ Play yours</button>`:''}
+          ${(pronBlob && pronScoringAvailable) ? `<button class="btn btn-sm" ${pronScoring?'disabled':''} onclick="checkPronunciation('${jsAttr(g.term)}','${esc(st.speechLang||guessLangCode(st.lang))}')">${pronScoring?'Checking…':'Score it'}</button>` : ''}
         </div>
-        <div class="mini">Nothing is saved — this is just for you, right now.</div>
+        ${pronScore ? `
+        <div style="width:100%;text-align:center">
+          <div style="font-size:26px;font-weight:800;color:${pronScoreColour(pronScore.pronScore)}">${pronScore.pronScore}<span style="font-size:14px;font-weight:600">/100</span></div>
+          <div class="mini">accuracy ${pronScore.accuracy} · fluency ${pronScore.fluency}</div>
+          ${pronScore.words.length>1 ? `<div class="pronrow" style="justify-content:center;flex-wrap:wrap;margin-top:6px">${pronScore.words.map(w=>`<span class="mini" style="padding:2px 7px;border-radius:99px;background:var(--surface);color:${pronScoreColour(w.score)}">${esc(w.word)} ${w.score}</span>`).join('')}</div>` : ''}
+          ${pronScore.heard && norm(pronScore.heard).replace(/[.!?,]/g,'') !== norm(g.term) ? `<div class="mini" style="margin-top:6px">Heard: "${esc(pronScore.heard)}"</div>` : ''}
+        </div>` : ''}
+        <div class="mini">${pronScoringAvailable ? 'Nothing is stored. "Score it" sends the clip for scoring, then discards it.' : 'Nothing is saved — this is just for you, right now.'}</div>
       </div>` : ''}
       ${practice.revealed ? `
       <div class="flashctrl">
