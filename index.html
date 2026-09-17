@@ -1131,6 +1131,21 @@ function transcriptFor(st, sessionId){
 /* ---------- recording & heuristic tagging ---------- */
 let recognizer = null, recActive = false, recState = 'off', recFailStreak = 0, recRestartTimer = null, recStartedAt = 0;
 const COALESCE_WINDOW_MS = 2500; // merge speech-recognition fragments finalized this close together into one line
+// Android Chrome's recogniser re-delivers text it already finalized — the same
+// phrase again, or the same phrase with more words on the end — especially
+// across its frequent automatic restarts. Appending blindly produced lines
+// like "hello hello how are you". Short phrases are exempt from the
+// "already said" check so a genuinely repeated "yes" isn't swallowed.
+function overlapWithLast(prevText, newText){
+  const clean = s => norm(s).replace(/[^\p{L}\p{N}\s]/gu,'').replace(/\s+/g,' ').trim();
+  const a = clean(prevText), b = clean(newText);
+  if(!a || !b) return 'new';
+  const words = b.split(' ').length;
+  if(b.startsWith(a) && b.length > a.length) return 'replace';
+  if(words >= 2 && a === b) return 'skip';
+  if(words >= 3 && a.endsWith(b)) return 'skip';
+  return 'new';
+}
 function speechSupported(){ return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
 function wordOverlap(a,b){
   const sa = new Set(norm(a).split(' ').filter(Boolean));
@@ -1485,6 +1500,17 @@ function appendOrPushLine(st, live, text){
   // diarized line (role set) — those are already coherent, speaker-attributed segments.
   const last = live.transcript[live.transcript.length-1];
   const now = Date.now() - live.startedAt;
+  const overlap = (last && !last.role && !last.done) ? overlapWithLast(last.text, text) : 'new';
+  if(overlap === 'skip') return;
+  if(overlap === 'replace'){
+    const prev = live.transcript[live.transcript.length-2];
+    last.text = text;
+    last.tags = tagLine(st, last.text, prev?prev.text:null);
+    save();
+    const el = document.querySelector(`[data-line="${last.id}"]`);
+    if(el) el.outerHTML = transcriptLineHTML(live.sessionId, last);
+    return;
+  }
   if(last && !last.role && !last.done && (now - last.t) < COALESCE_WINDOW_MS){
     const prev = live.transcript[live.transcript.length-2];
     last.text = (last.text + ' ' + text).trim();
@@ -3253,6 +3279,15 @@ function launchSRec(){
         if(text){
           const now = Date.now();
           const last = studentRecording.transcript[studentRecording.transcript.length-1];
+          const overlap = last ? overlapWithLast(last.text, text) : 'new';
+          if(overlap === 'skip') continue;
+          if(overlap === 'replace'){
+            last.text = text;
+            saveStudentRecording();
+            const log = document.getElementById('srecLog');
+            if(log && log.lastElementChild) log.lastElementChild.textContent = last.text;
+            continue;
+          }
           // Mobile speech recognition tends to finalize far more often than desktop — a single
           // sentence can arrive as several separate "final" fragments. Merge fragments that land
           // close together in time into one line instead of showing them as separate statements.
@@ -3343,6 +3378,7 @@ function renderStudentRecordTab(){
     <div class="sectionhead"><h3>Record this lesson</h3></div>
     ${speechSupported() ? `
     <p class="help">Click start at the beginning of your lesson and just talk normally — there's nothing else to do. Your tutor will use this afterward; it isn't sent anywhere automatically.</p>
+    ${/Android/i.test(navigator.userAgent) ? `<p class="mini" style="margin-bottom:10px;color:var(--warn)">On Android phones, you may hear a short beep every few seconds while recording. That's your phone's own sound each time the browser restarts listening — the app can't switch it off. Recording still works. To avoid the beeps, record on a laptop or computer instead.</p>` : ''}
     <p class="mini" style="margin-bottom:10px">If recording won't start while you're on your call, your browser is probably keeping the microphone for the call itself. Try opening this page in a different browser than the one you're using for the call (or on a second device) — that usually fixes it.</p>
     <div id="srecBanner" class="recbanner ${srecState==='listening'?'live':srecState==='stalled'?'stalled':'off'}">
       ${srecState==='listening' ? `<span class="dot"></span>Recording — listening` : srecState==='stalled' ? `Recording stopped unexpectedly<button class="btn btn-sm" style="margin-left:auto" onclick="resumeStudentRecording()">Resume</button>` : `Ready when you are`}
