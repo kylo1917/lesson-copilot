@@ -924,6 +924,218 @@ function loadStudentPrefs(){
 }
 function saveStudentPrefs(){ localStorage.setItem(STUDENT_PREFS_KEY, JSON.stringify(studentPrefs)); }
 let studentPrefs = loadStudentPrefs();
+
+/* ---------- student interface language ----------
+   Only the student view's buttons, menus and instructions are translated.
+   Everything that IS the lesson — transcripts, corrections, vocabulary,
+   library topics, phrases, fun facts, and the language speech recognition
+   listens for — stays in English on purpose. The tutor view is never
+   translated: t() is a no-op outside student mode.
+   Each entry is English key -> [Italian, Spanish, Polish]. A missing key
+   simply falls back to English. Polish avoids count-dependent plurals by
+   using "Label: {n}" phrasing, since it has three plural forms. */
+const UI_LANGS = [['en','English'],['it','Italiano'],['es','Español'],['pl','Polski']];
+const I18N_SRC = {
+  "Your lesson file · stays on this device": ["Il tuo file di lezione · resta su questo dispositivo","Tu archivo de clase · se queda en este dispositivo","Twój plik lekcji · zostaje na tym urządzeniu"],
+  "Import updated file": ["Importa file aggiornato","Importar archivo actualizado","Importuj zaktualizowany plik"],
+  "Import your file": ["Importa il tuo file","Importar tu archivo","Importuj swój plik"],
+  "Interface language": ["Lingua dell'interfaccia","Idioma de la interfaz","Język interfejsu"],
+  "My progress": ["I miei progressi","Mi progreso","Moje postępy"],
+  "Record lesson": ["Registra lezione","Grabar clase","Nagraj lekcję"],
+  "Lesson library": ["Biblioteca delle lezioni","Biblioteca de clases","Biblioteka lekcji"],
+  "Useful phrases": ["Frasi utili","Frases útiles","Przydatne zwroty"],
+  "Fun facts": ["Curiosità","Curiosidades","Ciekawostki"],
+  "Welcome to your lesson space": ["Ti diamo il benvenuto nel tuo spazio lezioni","Te damos la bienvenida a tu espacio de clases","Witaj w swojej przestrzeni do nauki"],
+  "Record lessons, review the corrections your tutor flagged, and practice your vocabulary — all saved right here on this device, never on a server.": ["Registra le lezioni, rivedi le correzioni segnalate dal tuo insegnante ed esercitati con il vocabolario — tutto salvato qui su questo dispositivo, mai su un server.","Graba tus clases, repasa las correcciones que marcó tu profesor y practica tu vocabulario — todo guardado aquí en este dispositivo, nunca en un servidor.","Nagrywaj lekcje, przeglądaj poprawki zaznaczone przez nauczyciela i ćwicz słownictwo — wszystko zapisane tutaj, na tym urządzeniu, nigdy na serwerze."],
+  "Record today's lesson": ["Registra la lezione di oggi","Graba la clase de hoy","Nagraj dzisiejszą lekcję"],
+  "No file needed yet — start recording any time and send it to your tutor when you're done.": ["Non serve ancora nessun file — inizia a registrare quando vuoi e invialo al tuo insegnante quando hai finito.","Todavía no necesitas ningún archivo — empieza a grabar cuando quieras y envíaselo a tu profesor cuando termines.","Plik nie jest jeszcze potrzebny — zacznij nagrywać w dowolnym momencie i wyślij nagranie nauczycielowi, gdy skończysz."],
+  "Go to Record lesson": ["Vai a Registra lezione","Ir a Grabar clase","Przejdź do nagrywania"],
+  "Already have a file from your tutor?": ["Hai già un file dal tuo insegnante?","¿Ya tienes un archivo de tu profesor?","Masz już plik od nauczyciela?"],
+  "Import it to see your progress, review flagged corrections, and practice your vocabulary with flashcards.": ["Importalo per vedere i tuoi progressi, rivedere le correzioni segnalate ed esercitarti con il vocabolario usando le flashcard.","Impórtalo para ver tu progreso, repasar las correcciones marcadas y practicar tu vocabulario con tarjetas.","Zaimportuj go, aby zobaczyć swoje postępy, przejrzeć zaznaczone poprawki i ćwiczyć słownictwo na kartach."],
+  "Want to talk about something specific?": ["Vuoi parlare di qualcosa in particolare?","¿Quieres hablar de algo en concreto?","Chcesz porozmawiać o czymś konkretnym?"],
+  "Browse real conversation topics and flag ones you'd like to cover in your next lesson.": ["Sfoglia argomenti di conversazione reali e segna quelli che vorresti affrontare nella prossima lezione.","Explora temas de conversación reales y marca los que te gustaría tratar en tu próxima clase.","Przeglądaj prawdziwe tematy rozmów i zaznacz te, które chcesz omówić na następnej lekcji."],
+  "Browse the library": ["Sfoglia la biblioteca","Explorar la biblioteca","Przeglądaj bibliotekę"],
+  "Sound more natural": ["Parla in modo più naturale","Suena más natural","Mów bardziej naturalnie"],
+  "Pick up a genuinely useful everyday phrase — the kind of thing native speakers actually say.": ["Impara una frase quotidiana davvero utile — di quelle che i madrelingua dicono davvero.","Aprende una frase cotidiana realmente útil — de las que de verdad dicen los nativos.","Poznaj naprawdę przydatny, codzienny zwrot — taki, jakiego faktycznie używają rodzimi użytkownicy."],
+  "See a useful phrase": ["Vedi una frase utile","Ver una frase útil","Zobacz przydatny zwrot"],
+  "Just here to kill time?": ["Sei qui solo per passare il tempo?","¿Solo quieres pasar el rato?","Chcesz po prostu zabić czas?"],
+  "Read a random fun fact about language while you wait for your next lesson.": ["Leggi una curiosità a caso sulle lingue mentre aspetti la prossima lezione.","Lee una curiosidad al azar sobre los idiomas mientras esperas tu próxima clase.","Przeczytaj losową ciekawostkę o języku, czekając na następną lekcję."],
+  "See a fun fact": ["Vedi una curiosità","Ver una curiosidad","Zobacz ciekawostkę"],
+  "{n} day streak": ["{n} giorni di fila","Racha de {n} días","Seria: {n} dni"],
+  "{n} words mastered": ["{n} parole imparate","{n} palabras dominadas","Opanowane słowa: {n}"],
+  "{n} session": ["{n} lezione","{n} clase","Lekcje: {n}"],
+  "{n} sessions": ["{n} lezioni","{n} clases","Lekcje: {n}"],
+  "Milestones": ["Traguardi","Logros","Osiągnięcia"],
+  "First session": ["Prima lezione","Primera clase","Pierwsza lekcja"],
+  "steady": ["stabile","estable","bez zmian"],
+  "Your {n}-day streak is at risk": ["La tua serie di {n} giorni è a rischio","Tu racha de {n} días está en peligro","Twoja seria {n} dni jest zagrożona"],
+  "Review a word or send today's recording to keep it alive.": ["Ripassa una parola o invia la registrazione di oggi per non interromperla.","Repasa una palabra o envía la grabación de hoy para mantenerla.","Powtórz słówko albo wyślij dzisiejsze nagranie, żeby jej nie przerwać."],
+  "Practice now": ["Esercitati ora","Practicar ahora","Ćwicz teraz"],
+  "Hi {name} — here's your progress": ["Ciao {name} — ecco i tuoi progressi","Hola, {name} — aquí tienes tu progreso","Cześć, {name} — oto Twoje postępy"],
+  "Save as PDF": ["Salva come PDF","Guardar como PDF","Zapisz jako PDF"],
+  "Practice flashcards": ["Esercitati con le flashcard","Practicar con tarjetas","Ćwicz na kartach"],
+  "Practice flashcards ({n} due)": ["Esercitati con le flashcard ({n} da ripassare)","Practicar con tarjetas ({n} pendientes)","Ćwicz na kartach (do powtórki: {n})"],
+  "Current average": ["Media attuale","Media actual","Obecna średnia"],
+  "vs your recent average": ["rispetto alla tua media recente","frente a tu media reciente","w porównaniu z ostatnią średnią"],
+  "Words mastered": ["Parole imparate","Palabras dominadas","Opanowane słowa"],
+  "Day streak": ["Giorni di fila","Días seguidos","Dni z rzędu"],
+  "Things to keep working on": ["Cose su cui lavorare","Cosas que seguir trabajando","Nad czym jeszcze popracować"],
+  "Hide this section": ["Nascondi questa sezione","Ocultar esta sección","Ukryj tę sekcję"],
+  "Show this section": ["Mostra questa sezione","Mostrar esta sección","Pokaż tę sekcję"],
+  "Corrections are hidden right now.": ["Le correzioni sono nascoste al momento.","Las correcciones están ocultas ahora mismo.","Poprawki są teraz ukryte."],
+  "Show them": ["Mostrale","Mostrarlas","Pokaż je"],
+  "{n} flagged": ["{n} segnalate","{n} marcadas","Zaznaczone: {n}"],
+  "Grammar": ["Grammatica","Gramática","Gramatyka"],
+  "Word choice": ["Scelta delle parole","Elección de palabras","Dobór słów"],
+  "Pronunciation": ["Pronuncia","Pronunciación","Wymowa"],
+  "Usage": ["Uso","Uso","Użycie"],
+  "Nothing repeat-flagged — nice work.": ["Nessun errore ripetuto — ottimo lavoro.","Ningún error repetido — ¡buen trabajo!","Brak powtarzających się błędów — świetna robota."],
+  "Show {n} more note": ["Mostra {n} altra nota","Mostrar {n} nota más","Pokaż więcej notatek ({n})"],
+  "Show {n} more notes": ["Mostra altre {n} note","Mostrar {n} notas más","Pokaż więcej notatek ({n})"],
+  "Hide {n} more note": ["Nascondi {n} nota","Ocultar {n} nota","Ukryj notatki ({n})"],
+  "Hide {n} more notes": ["Nascondi {n} note","Ocultar {n} notas","Ukryj notatki ({n})"],
+  "Recent sessions": ["Lezioni recenti","Clases recientes","Ostatnie lekcje"],
+  "No sessions yet.": ["Ancora nessuna lezione.","Todavía no hay clases.","Nie ma jeszcze lekcji."],
+  "Vocabulary & constructs": ["Vocabolario e strutture","Vocabulario y estructuras","Słownictwo i konstrukcje"],
+  "Vocabulary": ["Vocabolario","Vocabulario","Słownictwo"],
+  "Phrasal verb": ["Phrasal verb","Phrasal verb","Czasownik frazowy"],
+  "Collocation": ["Collocazione","Colocación","Kolokacja"],
+  "Idiom": ["Modo di dire","Expresión idiomática","Idiom"],
+  "Metaphor": ["Metafora","Metáfora","Metafora"],
+  "Nothing here yet.": ["Ancora niente qui.","Todavía no hay nada aquí.","Na razie nic tu nie ma."],
+  "Hear pronunciation": ["Ascolta la pronuncia","Escuchar la pronunciación","Posłuchaj wymowy"],
+  "Record this lesson": ["Registra questa lezione","Graba esta clase","Nagraj tę lekcję"],
+  "Click start at the beginning of your lesson and just talk normally — there's nothing else to do. Your tutor will use this afterward; it isn't sent anywhere automatically.": ["Premi Avvia registrazione all'inizio della lezione e parla normalmente — non devi fare nient'altro. Il tuo insegnante la userà dopo; non viene inviata da nessuna parte in automatico.","Pulsa Empezar a grabar al principio de la clase y habla con normalidad — no tienes que hacer nada más. Tu profesor la usará después; no se envía a ningún sitio automáticamente.","Naciśnij Rozpocznij nagrywanie na początku lekcji i po prostu mów normalnie — nic więcej nie musisz robić. Nauczyciel wykorzysta nagranie później; nie jest ono nigdzie wysyłane automatycznie."],
+  "On Android phones, you may hear a short beep every few seconds while recording. That's your phone's own sound each time the browser restarts listening — the app can't switch it off. Recording still works. To avoid the beeps, record on a laptop or computer instead.": ["Sui telefoni Android potresti sentire un breve bip ogni pochi secondi durante la registrazione. È un suono del telefono che si attiva ogni volta che il browser ricomincia ad ascoltare — l'app non può disattivarlo. La registrazione funziona comunque. Per evitare i bip, registra da un portatile o da un computer.","En los móviles Android puede que oigas un pitido corto cada pocos segundos mientras grabas. Es un sonido del propio móvil cada vez que el navegador vuelve a escuchar — la app no puede desactivarlo. La grabación funciona igualmente. Para evitar los pitidos, graba desde un portátil o un ordenador.","Na telefonach z Androidem podczas nagrywania co kilka sekund może być słychać krótki sygnał. To dźwięk samego telefonu, gdy przeglądarka ponownie zaczyna słuchać — aplikacja nie może go wyłączyć. Nagrywanie nadal działa. Aby uniknąć sygnałów, nagrywaj na laptopie lub komputerze."],
+  "If recording won't start while you're on your call, your browser is probably keeping the microphone for the call itself. Try opening this page in a different browser than the one you're using for the call (or on a second device) — that usually fixes it.": ["Se la registrazione non parte mentre sei in chiamata, probabilmente il browser sta riservando il microfono alla chiamata. Prova ad aprire questa pagina in un browser diverso da quello che usi per la chiamata (o su un secondo dispositivo) — di solito risolve il problema.","Si la grabación no empieza mientras estás en la llamada, probablemente el navegador esté reservando el micrófono para la llamada. Prueba a abrir esta página en un navegador distinto al que usas para la llamada (o en otro dispositivo) — normalmente eso lo soluciona.","Jeśli nagrywanie nie startuje podczas rozmowy, przeglądarka prawdopodobnie rezerwuje mikrofon dla połączenia. Otwórz tę stronę w innej przeglądarce niż ta, której używasz do rozmowy (albo na drugim urządzeniu) — zwykle to pomaga."],
+  "Recording — listening": ["Registrazione — in ascolto","Grabando — escuchando","Nagrywanie — słucham"],
+  "Recording stopped unexpectedly": ["La registrazione si è interrotta inaspettatamente","La grabación se ha detenido inesperadamente","Nagrywanie niespodziewanie się zatrzymało"],
+  "Resume": ["Riprendi","Reanudar","Wznów"],
+  "Ready when you are": ["Pronto quando vuoi","Listo cuando quieras","Gotowe, kiedy zechcesz"],
+  "Stop recording": ["Interrompi registrazione","Detener grabación","Zatrzymaj nagrywanie"],
+  "Start recording": ["Avvia registrazione","Empezar a grabar","Rozpocznij nagrywanie"],
+  "Clear": ["Cancella","Borrar","Wyczyść"],
+  "Recording stopped — {n} line captured": ["Registrazione interrotta — {n} riga registrata","Grabación detenida — {n} línea capturada","Nagrywanie zatrzymane — zapisane wiersze: {n}"],
+  "Recording stopped — {n} lines captured": ["Registrazione interrotta — {n} righe registrate","Grabación detenida — {n} líneas capturadas","Nagrywanie zatrzymane — zapisane wiersze: {n}"],
+  "Send it to your tutor now, before you forget.": ["Invialo subito al tuo insegnante, prima di dimenticartene.","Envíaselo ya a tu profesor, antes de que se te olvide.","Wyślij je nauczycielowi teraz, zanim zapomnisz."],
+  "Send to your tutor": ["Invia al tuo insegnante","Enviar a tu profesor","Wyślij nauczycielowi"],
+  "✓ Recording consent confirmed": ["✓ Consenso alla registrazione confermato","✓ Consentimiento de grabación confirmado","✓ Zgoda na nagrywanie potwierdzona"],
+  "Press start": ["Premi avvia","Pulsa empezar","Naciśnij start"],
+  "Talk normally": ["Parla normalmente","Habla con normalidad","Mów normalnie"],
+  "Recording needs Chrome — everything else on this page still works.": ["Per registrare serve Chrome — tutto il resto della pagina funziona comunque.","Para grabar necesitas Chrome — todo lo demás de esta página sigue funcionando.","Do nagrywania potrzebny jest Chrome — reszta tej strony nadal działa."],
+  "Recording needs Chrome": ["Per registrare serve Chrome","Para grabar necesitas Chrome","Do nagrywania potrzebny jest Chrome"],
+  "Microphone access was blocked — allow it in the browser to record": ["L'accesso al microfono è stato bloccato — consentilo nel browser per registrare","Se ha bloqueado el acceso al micrófono — permítelo en el navegador para grabar","Dostęp do mikrofonu został zablokowany — zezwól na niego w przeglądarce, aby nagrywać"],
+  "Nothing recorded yet": ["Non hai ancora registrato niente","Todavía no has grabado nada","Nic jeszcze nie nagrano"],
+  "Sent!": ["Inviato!","¡Enviado!","Wysłano!"],
+  "That file is not valid JSON": ["Quel file non è valido","Ese archivo no es válido","Ten plik jest nieprawidłowy"],
+  "Couldn't find your lesson file in there": ["Il tuo file di lezione non è stato trovato","No se ha encontrado tu archivo de clase","Nie znaleziono tu pliku lekcji"],
+  "Loaded {name}": ["Caricato: {name}","Cargado: {name}","Wczytano: {name}"],
+  "your file": ["il tuo file","tu archivo","Twój plik"],
+  "Flag a topic first": ["Segna prima un argomento","Marca primero un tema","Najpierw zaznacz temat"],
+  "Message copied — paste it to your tutor": ["Messaggio copiato — incollalo al tuo insegnante","Mensaje copiado — pégaselo a tu profesor","Wiadomość skopiowana — wklej ją nauczycielowi"],
+  "Could not copy — select the text and copy it manually": ["Impossibile copiare — seleziona il testo e copialo a mano","No se ha podido copiar — selecciona el texto y cópialo a mano","Nie udało się skopiować — zaznacz tekst i skopiuj go ręcznie"],
+  "Before you record": ["Prima di registrare","Antes de grabar","Zanim zaczniesz nagrywać"],
+  "By starting, you're confirming your tutor knows you're recording this lesson, and that you're okay with your own voice being recorded too. If you're under 18, make sure a parent or guardian is okay with this as well.": ["Iniziando confermi che il tuo insegnante sa che stai registrando questa lezione e che anche tu sei d'accordo che la tua voce venga registrata. Se hai meno di 18 anni, assicurati che anche un genitore o tutore sia d'accordo.","Al empezar, confirmas que tu profesor sabe que estás grabando esta clase y que también estás de acuerdo con que se grabe tu voz. Si tienes menos de 18 años, asegúrate de que tu madre, padre o tutor legal también esté de acuerdo.","Rozpoczynając, potwierdzasz, że nauczyciel wie o nagrywaniu tej lekcji i że zgadzasz się na nagrywanie również Twojego głosu. Jeśli masz mniej niż 18 lat, upewnij się, że rodzic lub opiekun prawny również się na to zgadza."],
+  "Cancel": ["Annulla","Cancelar","Anuluj"],
+  "I understand — start recording": ["Ho capito — avvia la registrazione","Entendido — empezar a grabar","Rozumiem — rozpocznij nagrywanie"],
+  "Are you sure?": ["Confermi?","¿Lo confirmas?","Na pewno?"],
+  "Confirm": ["Conferma","Confirmar","Potwierdź"],
+  "Clear this recording? This cannot be undone.": ["Cancellare questa registrazione? L'operazione non si può annullare.","¿Borrar esta grabación? No se puede deshacer.","Wyczyścić to nagranie? Tej operacji nie można cofnąć."],
+  "Clear recording": ["Cancella registrazione","Borrar grabación","Wyczyść nagranie"],
+  "Fun fact": ["Curiosità","Curiosidad","Ciekawostka"],
+  "Show me another": ["Mostrane un'altra","Muéstrame otra","Pokaż coś innego"],
+  "Useful phrase": ["Frase utile","Frase útil","Przydatny zwrot"],
+  "Pick a topic to explore": ["Scegli un argomento da esplorare","Elige un tema para explorar","Wybierz temat do odkrycia"],
+  "Real conversation topics — vocabulary, an example exchange, and questions to think about. Every topic works at any level: start with the core basics, or push into \"go deeper\" for more of a challenge.": ["Argomenti di conversazione reali — vocabolario, un dialogo di esempio e domande su cui riflettere. Ogni argomento va bene per qualsiasi livello: parti dalle basi oppure passa ad “Approfondisci” per una sfida in più.","Temas de conversación reales — vocabulario, un diálogo de ejemplo y preguntas para pensar. Cada tema sirve para cualquier nivel: empieza por lo básico o pasa a “Profundiza” si quieres más reto.","Prawdziwe tematy rozmów — słownictwo, przykładowy dialog i pytania do przemyślenia. Każdy temat pasuje do każdego poziomu: zacznij od podstaw albo przejdź do sekcji „Więcej wyzwań”, jeśli chcesz się bardziej sprawdzić."],
+  "Your requested topics": ["Argomenti che hai richiesto","Temas que has pedido","Tematy, o które prosisz"],
+  "Copy message for your tutor": ["Copia il messaggio per il tuo insegnante","Copiar mensaje para tu profesor","Skopiuj wiadomość dla nauczyciela"],
+  "There's no automatic sync — this copies a short message you can paste to your tutor yourself.": ["Non c'è sincronizzazione automatica — questo copia un breve messaggio che puoi incollare tu al tuo insegnante.","No hay sincronización automática — esto copia un mensaje corto que puedes pegarle tú a tu profesor.","Nie ma automatycznej synchronizacji — to kopiuje krótką wiadomość, którą możesz wkleić nauczycielowi."],
+  "Conversation & Social Skills": ["Conversazione e abilità sociali","Conversación y habilidades sociales","Rozmowa i umiejętności społeczne"],
+  "Culture & Identity": ["Cultura e identità","Cultura e identidad","Kultura i tożsamość"],
+  "Everyday Life": ["Vita quotidiana","Vida cotidiana","Życie codzienne"],
+  "Future & Goals": ["Futuro e obiettivi","Futuro y metas","Przyszłość i cele"],
+  "Health & Wellness": ["Salute e benessere","Salud y bienestar","Zdrowie i dobre samopoczucie"],
+  "Opinions & Society": ["Opinioni e società","Opiniones y sociedad","Opinie i społeczeństwo"],
+  "Travel": ["Viaggi","Viajes","Podróże"],
+  "Work & Career": ["Lavoro e carriera","Trabajo y carrera","Praca i kariera"],
+  "★ Requested": ["★ Richiesto","★ Pedido","★ Zgłoszony"],
+  "☆ Request this": ["☆ Richiedi","☆ Pedir este tema","☆ Poproś o ten temat"],
+  "Core vocabulary — everyone": ["Vocabolario di base — per tutti","Vocabulario básico — para todos","Podstawowe słownictwo — dla wszystkich"],
+  "Go deeper": ["Approfondisci","Profundiza","Więcej wyzwań"],
+  "Model exchange": ["Dialogo di esempio","Diálogo de ejemplo","Przykładowy dialog"],
+  "Warm-up questions — everyone": ["Domande di riscaldamento — per tutti","Preguntas para calentar — para todos","Pytania na rozgrzewkę — dla wszystkich"],
+  "Practice: {name}'s glossary": ["Esercizio: glossario di {name}","Práctica: glosario de {name}","Ćwiczenie: słowniczek ({name})"],
+  "All types": ["Tutti i tipi","Todos los tipos","Wszystkie typy"],
+  "Back to file": ["Torna indietro","Volver","Wróć"],
+  "Session complete": ["Esercizio completato","Práctica completada","Ćwiczenie ukończone"],
+  "{total} reviewed · {right} you knew · {wrong} need more practice": ["{total} ripassate · {right} sapevi · {wrong} da esercitare ancora","{total} repasadas · {right} las sabías · {wrong} necesitan más práctica","Powtórzone: {total} · znane: {right} · do dalszej nauki: {wrong}"],
+  "Practice more": ["Esercitati ancora","Practicar más","Ćwicz dalej"],
+  "No vocabulary saved yet for this filter.": ["Nessun vocabolo salvato per questo filtro.","Todavía no hay vocabulario guardado para este filtro.","Brak zapisanego słownictwa dla tego filtra."],
+  "All caught up — nothing's due for review right now.": ["Tutto in pari — niente da ripassare per ora.","Todo al día — ahora mismo no hay nada que repasar.","Wszystko na bieżąco — nic nie czeka teraz na powtórkę."],
+  "Practice anyway": ["Esercitati comunque","Practicar de todos modos","Ćwicz mimo to"],
+  "New": ["Nuova","Nueva","Nowe"],
+  "Mastered": ["Imparata","Dominada","Opanowane"],
+  "Learning": ["In apprendimento","Aprendiendo","W trakcie nauki"],
+  "🔥 {n} day streak": ["🔥 {n} giorni di fila","🔥 racha de {n} días","🔥 dni z rzędu: {n}"],
+  "{pos} of {total}": ["{pos} di {total}","{pos} de {total}","{pos} z {total}"],
+  "Type what you think it means (optional)": ["Scrivi cosa pensi che significhi (facoltativo)","Escribe lo que crees que significa (opcional)","Wpisz, co Twoim zdaniem to znaczy (opcjonalnie)"],
+  "Reveal": ["Mostra","Mostrar","Pokaż"],
+  "You said: \"{text}\"": ["Hai scritto: “{text}”","Has escrito: “{text}”","Napisano: „{text}”"],
+  "Practice saying it": ["Esercitati a dirlo","Practica cómo se dice","Poćwicz wymowę"],
+  "Listening… say it now": ["In ascolto… dillo ora","Escuchando… dilo ahora","Słucham… powiedz to teraz"],
+  "🗣️ Check it": ["🗣️ Verifica","🗣️ Comprobar","🗣️ Sprawdź"],
+  "Understood clearly ✓": ["Capito chiaramente ✓","Se ha entendido bien ✓","Zrozumiałe ✓"],
+  "Not quite — some of it wasn't understood": ["Non del tutto — una parte non è stata capita","Casi — una parte no se ha entendido","Nie do końca — część nie została zrozumiana"],
+  "Heard: \"{text}\"": ["Sentito: “{text}”","Se ha oído: “{text}”","Usłyszano: „{text}”"],
+  "⏹ Stop": ["⏹ Stop","⏹ Parar","⏹ Zatrzymaj"],
+  "🎙️ Record yourself": ["🎙️ Registrati","🎙️ Grábate","🎙️ Nagraj się"],
+  "▶ Play yours": ["▶ Ascoltati","▶ Escúchate","▶ Odsłuchaj"],
+  "Checking…": ["Verifica in corso…","Comprobando…","Sprawdzanie…"],
+  "Score it": ["Valuta","Puntuar","Oceń"],
+  "accuracy {a} · fluency {f}": ["precisione {a} · scioltezza {f}","precisión {a} · fluidez {f}","dokładność {a} · płynność {f}"],
+  "Nothing is saved.": ["Non viene salvato niente.","No se guarda nada.","Nic nie jest zapisywane."],
+  "\"Check it\" uses your browser's built-in speech recognition, the same as lesson recording.": ["“Verifica” usa il riconoscimento vocale integrato nel browser, come la registrazione della lezione.","“Comprobar” usa el reconocimiento de voz integrado del navegador, igual que la grabación de clases.","„Sprawdź” korzysta z wbudowanego rozpoznawania mowy w przeglądarce, tak jak nagrywanie lekcji."],
+  "\"Score it\" sends your recording for scoring, then discards it.": ["“Valuta” invia la registrazione per la valutazione e poi la elimina.","“Puntuar” envía tu grabación para puntuarla y luego la descarta.","„Oceń” wysyła nagranie do oceny, a potem je usuwa."],
+  "Didn't know it": ["Non lo sapevo","No lo sabía","Nie znam"],
+  "Knew it": ["Lo sapevo","Lo sabía","Znam"],
+  "Keyboard: ← didn't know it · → / space knew it": ["Tastiera: ← non lo sapevo · → / spazio lo sapevo","Teclado: ← no lo sabía · → / espacio lo sabía","Klawiatura: ← nie znam · → / spacja znam"],
+  "Keyboard: space to reveal": ["Tastiera: spazio per mostrare","Teclado: espacio para mostrar","Klawiatura: spacja, aby pokazać"],
+  "Checking pronunciation needs speech recognition, which this browser doesn't support": ["La verifica della pronuncia richiede il riconoscimento vocale, che questo browser non supporta","Comprobar la pronunciación requiere reconocimiento de voz, y este navegador no lo admite","Sprawdzanie wymowy wymaga rozpoznawania mowy, którego ta przeglądarka nie obsługuje"],
+  "Microphone access was blocked — allow it to check your pronunciation": ["L'accesso al microfono è stato bloccato — consentilo per verificare la pronuncia","Se ha bloqueado el acceso al micrófono — permítelo para comprobar tu pronunciación","Dostęp do mikrofonu został zablokowany — zezwól na niego, aby sprawdzić wymowę"],
+  "Didn't hear anything — press Check it and say the word": ["Non ho sentito niente — premi Verifica e di' la parola","No se ha oído nada — pulsa Comprobar y di la palabra","Nic nie usłyszano — naciśnij Sprawdź i powiedz słowo"],
+  "Could not check that — try again": ["Impossibile verificare — riprova","No se ha podido comprobar — inténtalo de nuevo","Nie udało się sprawdzić — spróbuj ponownie"],
+  "Didn't catch that — try again a little louder": ["Non ho capito — riprova un po' più forte","No se ha entendido — inténtalo otra vez un poco más alto","Nie dosłyszano — spróbuj ponownie trochę głośniej"],
+  "Could not start listening — try again": ["Impossibile iniziare l'ascolto — riprova","No se ha podido empezar a escuchar — inténtalo de nuevo","Nie udało się rozpocząć słuchania — spróbuj ponownie"],
+  "Recording your own voice needs a modern browser": ["Per registrare la tua voce serve un browser aggiornato","Para grabar tu voz necesitas un navegador actualizado","Do nagrywania własnego głosu potrzebna jest nowoczesna przeglądarka"],
+  "Microphone access was blocked — allow it to record yourself": ["L'accesso al microfono è stato bloccato — consentilo per registrarti","Se ha bloqueado el acceso al micrófono — permítelo para grabarte","Dostęp do mikrofonu został zablokowany — zezwól na niego, aby się nagrać"],
+  "Pronunciation scoring is not set up yet": ["La valutazione della pronuncia non è ancora configurata","La puntuación de pronunciación aún no está configurada","Ocena wymowy nie jest jeszcze skonfigurowana"],
+  "Could not score that: {error}": ["Impossibile valutare: {error}","No se ha podido puntuar: {error}","Nie udało się ocenić: {error}"],
+  "Couldn't make out any speech in that recording — try again a bit louder": ["Nella registrazione non si sente nessuna voce — riprova un po' più forte","No se distingue ninguna voz en la grabación — inténtalo un poco más alto","W nagraniu nie słychać mowy — spróbuj trochę głośniej"],
+  "Could not reach the scoring service — check your connection": ["Impossibile raggiungere il servizio di valutazione — controlla la connessione","No se ha podido conectar con el servicio de puntuación — revisa tu conexión","Nie udało się połączyć z usługą oceny — sprawdź połączenie"],
+};
+const I18N = { it:{}, es:{}, pl:{} };
+Object.entries(I18N_SRC).forEach(([en,[it,es,pl]]) => { I18N.it[en]=it; I18N.es[en]=es; I18N.pl[en]=pl; });
+function uiLang(){
+  if(!STUDENT_MODE) return 'en';
+  let l = studentPrefs.uiLang;
+  // First visit: follow the phone/browser language if we support it.
+  if(!l){ const nav = String(navigator.language||'').slice(0,2).toLowerCase(); l = I18N[nav] ? nav : 'en'; }
+  return (l==='en' || I18N[l]) ? l : 'en';
+}
+function t(s, vars){
+  const lang = uiLang();
+  let out = (lang!=='en' && I18N[lang][s]) || s;
+  if(vars) Object.keys(vars).forEach(k => { out = out.split('{'+k+'}').join(vars[k]); });
+  return out;
+}
+function tp(n, one, other, vars){ return t(n===1 ? one : other, Object.assign({ n }, vars||{})); }
+// Same as t(), for the library code where `t` is already used as a local name for a topic.
+function tr(s, vars){ return t(s, vars); }
+function setUiLang(lang){
+  studentPrefs.uiLang = lang;
+  saveStudentPrefs();
+  render();
+}
 function toggleShowCorrections(){
   studentPrefs.showCorrections = !studentPrefs.showCorrections;
   saveStudentPrefs();
@@ -938,10 +1150,11 @@ function toggleTopicRequest(topicId){
 }
 function copyTopicRequests(){
   const requested = (studentPrefs.requestedTopics||[]).map(id=>LESSON_LIBRARY.find(t=>t.id===id)).filter(Boolean);
-  if(!requested.length){ toast('Flag a topic first'); return; }
+  if(!requested.length){ toast(tr("Flag a topic first")); return; }
+  // The message itself stays in English on purpose — it's written for the tutor.
   const lines = ["Hi! For our next lesson, I'd love to cover:"];
   requested.forEach(t=>lines.push(`- ${t.title}`));
-  copyText(lines.join('\n'), 'Message copied — paste it to your tutor');
+  copyText(lines.join('\n'), tr("Message copied — paste it to your tutor"));
 }
 
 function openDiarizeSettings(){
@@ -1076,11 +1289,11 @@ function confirmModal(message, onConfirm, okLabel){
   overlay.className = 'overlay';
   overlay.innerHTML = `
     <div class="modal">
-      <h3>Are you sure?</h3>
+      <h3>${t("Are you sure?")}</h3>
       <p class="help">${esc(message)}</p>
       <div class="modalrow">
-        <button class="btn" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" id="confirmModalOkBtn">${esc(okLabel||'Confirm')}</button>
+        <button class="btn" onclick="closeModal()">${t("Cancel")}</button>
+        <button class="btn btn-primary" id="confirmModalOkBtn">${esc(okLabel||t("Confirm"))}</button>
       </div>
     </div>`;
   overlay.id = 'modalHost';
@@ -2628,7 +2841,7 @@ function stopPronCheck(){
 }
 function startPronCheck(term, langCode){
   if(pronCheck && pronCheck.listening) return;
-  if(!speechSupported()){ toast('Checking pronunciation needs speech recognition, which this browser doesn\'t support'); return; }
+  if(!speechSupported()){ toast(tr("Checking pronunciation needs speech recognition, which this browser doesn't support")); return; }
   const target = pronWords(term);
   if(!target.length) return;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -2657,25 +2870,25 @@ function startPronCheck(term, langCode){
   rec.onerror = (e) => {
     done = true;
     pronCheck = null;
-    if(e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Microphone access was blocked — allow it to check your pronunciation');
-    else if(e.error === 'no-speech') toast("Didn't hear anything — press Check it and say the word");
-    else if(e.error !== 'aborted') toast('Could not check that — try again');
+    if(e.error === 'not-allowed' || e.error === 'service-not-allowed') toast(tr("Microphone access was blocked — allow it to check your pronunciation"));
+    else if(e.error === 'no-speech') toast(tr("Didn't hear anything — press Check it and say the word"));
+    else if(e.error !== 'aborted') toast(tr("Could not check that — try again"));
     render();
   };
   rec.onend = () => {
     clearTimeout(pronCheckTimer);
     pronCheckRec = null;
-    if(!done){ pronCheck = null; toast("Didn't catch that — try again a little louder"); render(); }
+    if(!done){ pronCheck = null; toast(tr("Didn't catch that — try again a little louder")); render(); }
   };
   pronCheckRec = rec;
   pronCheck = { listening: true };
   pronCheckTimer = setTimeout(() => { try{ rec.stop(); }catch(e){} }, 7000);
-  try{ rec.start(); }catch(e){ pronCheck = null; pronCheckRec = null; toast('Could not start listening — try again'); }
+  try{ rec.start(); }catch(e){ pronCheck = null; pronCheckRec = null; toast(tr("Could not start listening — try again")); }
   render();
 }
 async function togglePronRecording(){
   if(pronRecording){ try{ pronRecorder.stop(); }catch(e){} return; }
-  if(!micRecordingSupported()){ toast('Recording your own voice needs a modern browser'); return; }
+  if(!micRecordingSupported()){ toast(tr("Recording your own voice needs a modern browser")); return; }
   if(pronBlobUrl){ URL.revokeObjectURL(pronBlobUrl); pronBlobUrl = null; }
   pronBlob = null; pronScore = null;
   try{
@@ -2696,7 +2909,7 @@ async function togglePronRecording(){
     pronRecording = true;
     render();
   }catch(e){
-    toast('Microphone access was blocked — allow it to record yourself');
+    toast(tr("Microphone access was blocked — allow it to record yourself"));
   }
 }
 function playPronRecording(){ if(pronBlobUrl) new Audio(pronBlobUrl).play().catch(()=>{}); }
@@ -2722,15 +2935,15 @@ async function checkPronunciation(term, langCode){
     const resp = await fetch(PRONOUNCE_URL, { method:'POST', body: form });
     const data = await resp.json();
     if(!resp.ok){
-      toast(data.error === 'not_configured' ? 'Pronunciation scoring is not set up yet' : ('Could not score that: ' + (data.error || resp.status)), 8000);
+      toast(data.error === 'not_configured' ? tr("Pronunciation scoring is not set up yet") : tr("Could not score that: {error}", { error: data.error || resp.status }), 8000);
       if(data.error === 'not_configured') pronScoringAvailable = false;
     } else if(data.noSpeech){
-      toast("Couldn't make out any speech in that recording — try again a bit louder", 8000);
+      toast(tr("Couldn't make out any speech in that recording — try again a bit louder"), 8000);
     } else {
       pronScore = data;
     }
   }catch(e){
-    toast('Could not reach the scoring service — check your connection', 8000);
+    toast(tr("Could not reach the scoring service — check your connection"), 8000);
   }finally{
     pronScoring = false;
     render();
@@ -2784,13 +2997,13 @@ function practiceGrade(gotIt){
 function renderPractice(st){
   const head = `
     <div class="sectionhead">
-      <h3>Practice: ${esc(st.name)}'s glossary</h3>
+      <h3>${t("Practice: {name}'s glossary",{name:esc(st.name)})}</h3>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select onchange="practiceSetFilter(this.value)">
-          <option value="all" ${practice.typeFilter==='all'?'selected':''}>All types</option>
-          ${Object.entries(GTYPES).map(([k,v])=>`<option value="${k}" ${practice.typeFilter===k?'selected':''}>${v.label}</option>`).join('')}
+          <option value="all" ${practice.typeFilter==='all'?'selected':''}>${t("All types")}</option>
+          ${Object.entries(GTYPES).map(([k,v])=>`<option value="${k}" ${practice.typeFilter===k?'selected':''}>${t(v.label)}</option>`).join('')}
         </select>
-        <button class="btn btn-ghost btn-sm" onclick="resetPronRecording();practice.active=false;render()">Back to file</button>
+        <button class="btn btn-ghost btn-sm" onclick="resetPronRecording();practice.active=false;render()">${t("Back to file")}</button>
       </div>
     </div>`;
 
@@ -2799,21 +3012,21 @@ function renderPractice(st){
     return `<div class="card">${head}
       <div class="flash">
         <div style="font-size:32px">✓</div>
-        <h3 style="font-size:18px">Session complete</h3>
-        <div class="mini">${right+wrong} reviewed · ${right} you knew · ${wrong} need more practice</div>
-        <div class="flashctrl"><button class="btn btn-primary" onclick="practicePracticeAnyway()">Practice more</button></div>
+        <h3 style="font-size:18px">${t("Session complete")}</h3>
+        <div class="mini">${t("{total} reviewed · {right} you knew · {wrong} need more practice",{total:right+wrong,right,wrong})}</div>
+        <div class="flashctrl"><button class="btn btn-primary" onclick="practicePracticeAnyway()">${t("Practice more")}</button></div>
       </div>
     </div>`;
   }
 
   if(!practice.queue.length){
     const filtered = practice.typeFilter==='all' ? st.glossary : st.glossary.filter(g=>g.type===practice.typeFilter);
-    if(!filtered.length) return `<div class="card">${head}<div class="help" style="padding:20px 0;text-align:center">No vocabulary saved yet for this filter.</div></div>`;
+    if(!filtered.length) return `<div class="card">${head}<div class="help" style="padding:20px 0;text-align:center">${t("No vocabulary saved yet for this filter.")}</div></div>`;
     return `<div class="card">${head}
       <div class="flash">
         <div style="font-size:32px">🎉</div>
-        <div class="help" style="text-align:center;max-width:320px">All caught up — nothing's due for review right now.</div>
-        <button class="btn btn-primary" onclick="practicePracticeAnyway()">Practice anyway</button>
+        <div class="help" style="text-align:center;max-width:320px">${t("All caught up — nothing's due for review right now.")}</div>
+        <button class="btn btn-primary" onclick="practicePracticeAnyway()">${t("Practice anyway")}</button>
       </div>
     </div>`;
   }
@@ -2822,26 +3035,26 @@ function renderPractice(st){
   if(!g){ practice.pos++; if(practice.pos>=practice.queue.length) practice.finished=true; render(); return ''; }
   const meta = GTYPES[g.type];
   const box = srsOf(g).box;
-  const stageLabel = box===0 ? 'New' : box>=4 ? 'Mastered' : 'Learning';
+  const stageLabel = box===0 ? t("New") : box>=4 ? t("Mastered") : t("Learning");
   const speechLang = st.speechLang || guessLangCode(st.lang);
-  const streakLabel = streakIsLive(st) && st.streak.current>1 ? ` · 🔥 ${st.streak.current} day streak` : '';
+  const streakLabel = streakIsLive(st) && st.streak.current>1 ? ` · ${t("🔥 {n} day streak",{n:st.streak.current})}` : '';
   return `
   <div class="card">
     ${head}
     <div class="flash">
-      <div class="mini">${practice.pos+1} of ${practice.queue.length} · ${stageLabel}${streakLabel}</div>
+      <div class="mini">${t("{pos} of {total}",{pos:practice.pos+1,total:practice.queue.length})} · ${stageLabel}${streakLabel}</div>
       <div class="flashcard">
-        <span class="pill" style="background:var(${meta.t});color:var(${meta.v})">${meta.label}</span>
+        <span class="pill" style="background:var(${meta.t});color:var(${meta.v})">${t(meta.label)}</span>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="term">${esc(g.term)}</div>
-          <button class="linkbtn" style="font-size:18px;padding:2px 6px" title="Hear pronunciation" onclick="speakTerm('${jsAttr(g.term)}','${speechLang}')">🔊</button>
+          <button class="linkbtn" style="font-size:18px;padding:2px 6px" title="${t("Hear pronunciation")}" onclick="speakTerm('${jsAttr(g.term)}','${speechLang}')">🔊</button>
         </div>
         ${!practice.revealed ? `
-          <input id="practiceTyped" placeholder="Type what you think it means (optional)" style="width:100%;max-width:280px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);text-align:center" onkeydown="if(event.key==='Enter')practiceReveal()">
-          <button class="btn btn-sm btn-primary" onclick="practiceReveal()">Reveal</button>
+          <input id="practiceTyped" placeholder="${t("Type what you think it means (optional)")}" style="width:100%;max-width:280px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);text-align:center" onkeydown="if(event.key==='Enter')practiceReveal()">
+          <button class="btn btn-sm btn-primary" onclick="practiceReveal()">${t("Reveal")}</button>
         ` : `
           <div class="reveal">
-            ${practice.typedAnswer ? `<div class="mini">You said: "${esc(practice.typedAnswer)}"</div>` : ''}
+            ${practice.typedAnswer ? `<div class="mini">${t("You said: \"{text}\"",{text:esc(practice.typedAnswer)})}</div>` : ''}
             ${g.meaning?`<div class="meaning">${esc(g.meaning)}</div>`:''}
             ${g.example?`<div class="example">"${esc(g.example)}"</div>`:''}
           </div>
@@ -2849,40 +3062,40 @@ function renderPractice(st){
       </div>
       ${practice.revealed && (micRecordingSupported() || speechSupported()) ? `
       <div class="pronbox">
-        <div class="eyebrow">Practice saying it</div>
+        <div class="eyebrow">${t("Practice saying it")}</div>
         ${speechSupported() ? `
         <div class="pronrow">
-          <button class="btn btn-sm ${pronCheck&&pronCheck.listening?'recbtn':'btn-primary'}" ${pronCheck&&pronCheck.listening?'disabled':''} onclick="startPronCheck('${jsAttr(g.term)}','${esc(st.speechLang||guessLangCode(st.lang))}')">${pronCheck&&pronCheck.listening?'Listening… say it now':'🗣️ Check it'}</button>
+          <button class="btn btn-sm ${pronCheck&&pronCheck.listening?'recbtn':'btn-primary'}" ${pronCheck&&pronCheck.listening?'disabled':''} onclick="startPronCheck('${jsAttr(g.term)}','${esc(st.speechLang||guessLangCode(st.lang))}')">${pronCheck&&pronCheck.listening?t("Listening… say it now"):t("🗣️ Check it")}</button>
         </div>
         ${pronCheck && !pronCheck.listening ? `
         <div style="width:100%;text-align:center">
-          <div style="font-weight:700;color:${pronCheck.allOk?'var(--good)':'var(--warn)'}">${pronCheck.allOk ? 'Understood clearly ✓' : 'Not quite — some of it wasn\'t understood'}</div>
+          <div style="font-weight:700;color:${pronCheck.allOk?'var(--good)':'var(--warn)'}">${pronCheck.allOk ? t("Understood clearly ✓") : t("Not quite — some of it wasn't understood")}</div>
           ${pronCheck.words.length>1 || !pronCheck.allOk ? `<div class="pronrow" style="justify-content:center;flex-wrap:wrap;margin-top:6px">${pronCheck.words.map(w=>`<span class="mini" style="padding:2px 8px;border-radius:99px;background:var(--surface);color:${w.ok?'var(--good)':'var(--bad)'}">${w.ok?'✓':'✗'} ${esc(w.word)}</span>`).join('')}</div>` : ''}
-          ${!pronCheck.allOk && pronCheck.heard ? `<div class="mini" style="margin-top:6px">Heard: "${esc(pronCheck.heard)}"</div>` : ''}
+          ${!pronCheck.allOk && pronCheck.heard ? `<div class="mini" style="margin-top:6px">${t("Heard: \"{text}\"",{text:esc(pronCheck.heard)})}</div>` : ''}
         </div>` : ''}` : ''}
         ${micRecordingSupported() ? `
         <div class="pronrow">
-          <button class="btn btn-sm ${pronRecording?'recbtn':''}" onclick="togglePronRecording()">${pronRecording?'⏹ Stop':'🎙️ Record yourself'}</button>
+          <button class="btn btn-sm ${pronRecording?'recbtn':''}" onclick="togglePronRecording()">${pronRecording?t("⏹ Stop"):t("🎙️ Record yourself")}</button>
           ${pronRecording?'<span class="recdotsm"></span>':''}
-          ${pronBlobUrl?`<button class="btn btn-sm" onclick="playPronRecording()">▶ Play yours</button>`:''}
-          ${(pronBlob && pronScoringAvailable) ? `<button class="btn btn-sm" ${pronScoring?'disabled':''} onclick="checkPronunciation('${jsAttr(g.term)}','${esc(st.speechLang||guessLangCode(st.lang))}')">${pronScoring?'Checking…':'Score it'}</button>` : ''}
+          ${pronBlobUrl?`<button class="btn btn-sm" onclick="playPronRecording()">${t("▶ Play yours")}</button>`:''}
+          ${(pronBlob && pronScoringAvailable) ? `<button class="btn btn-sm" ${pronScoring?'disabled':''} onclick="checkPronunciation('${jsAttr(g.term)}','${esc(st.speechLang||guessLangCode(st.lang))}')">${pronScoring?t("Checking…"):t("Score it")}</button>` : ''}
         </div>
         ${pronScore ? `
         <div style="width:100%;text-align:center">
           <div style="font-size:26px;font-weight:800;color:${pronScoreColour(pronScore.pronScore)}">${pronScore.pronScore}<span style="font-size:14px;font-weight:600">/100</span></div>
-          <div class="mini">accuracy ${pronScore.accuracy} · fluency ${pronScore.fluency}</div>
+          <div class="mini">${t("accuracy {a} · fluency {f}",{a:pronScore.accuracy,f:pronScore.fluency})}</div>
           ${pronScore.words.length>1 ? `<div class="pronrow" style="justify-content:center;flex-wrap:wrap;margin-top:6px">${pronScore.words.map(w=>`<span class="mini" style="padding:2px 7px;border-radius:99px;background:var(--surface);color:${pronScoreColour(w.score)}">${esc(w.word)} ${w.score}</span>`).join('')}</div>` : ''}
-          ${pronScore.heard && norm(pronScore.heard).replace(/[.!?,]/g,'') !== norm(g.term) ? `<div class="mini" style="margin-top:6px">Heard: "${esc(pronScore.heard)}"</div>` : ''}
+          ${pronScore.heard && norm(pronScore.heard).replace(/[.!?,]/g,'') !== norm(g.term) ? `<div class="mini" style="margin-top:6px">${t("Heard: \"{text}\"",{text:esc(pronScore.heard)})}</div>` : ''}
         </div>` : ''}` : ''}
-        <div class="mini">Nothing is saved.${speechSupported() ? ' "Check it" uses your browser\'s built-in speech recognition, the same as lesson recording.' : ''}${pronScoringAvailable ? ' "Score it" sends your recording for scoring, then discards it.' : ''}</div>
+        <div class="mini">${[t("Nothing is saved."), speechSupported() ? t("\"Check it\" uses your browser's built-in speech recognition, the same as lesson recording.") : '', pronScoringAvailable ? t("\"Score it\" sends your recording for scoring, then discards it.") : ''].filter(Boolean).map(esc).join(' ')}</div>
       </div>` : ''}
       ${practice.revealed ? `
       <div class="flashctrl">
-        <button class="btn btn-sm" style="background:var(--bad);border-color:var(--bad);color:white" onclick="practiceGrade(false)">Didn't know it</button>
-        <button class="btn btn-sm btn-primary" onclick="practiceGrade(true)">Knew it</button>
+        <button class="btn btn-sm" style="background:var(--bad);border-color:var(--bad);color:white" onclick="practiceGrade(false)">${t("Didn't know it")}</button>
+        <button class="btn btn-sm btn-primary" onclick="practiceGrade(true)">${t("Knew it")}</button>
       </div>
-      <div class="mini no-print">Keyboard: ← didn't know it · → / space knew it</div>` : `
-      <div class="mini no-print">Keyboard: space to reveal</div>`}
+      <div class="mini no-print">${t("Keyboard: ← didn't know it · → / space knew it")}</div>` : `
+      <div class="mini no-print">${t("Keyboard: space to reveal")}</div>`}
     </div>
   </div>`;
 }
@@ -2969,7 +3182,7 @@ function copyText(text, successMsg){
     const ta = document.createElement('textarea');
     ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
     document.body.appendChild(ta); ta.select();
-    try{ document.execCommand('copy'); done(); }catch(e){ toast('Could not copy — select the text and copy it manually'); }
+    try{ document.execCommand('copy'); done(); }catch(e){ toast(t("Could not copy — select the text and copy it manually")); }
     ta.remove();
   };
   if(navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done).catch(fail);
@@ -3026,14 +3239,14 @@ function handleStudentImport(file){
   const reader = new FileReader();
   reader.onload = () => {
     let data;
-    try{ data = JSON.parse(reader.result); }catch(e){ toast('That file is not valid JSON'); return; }
+    try{ data = JSON.parse(reader.result); }catch(e){ toast(t("That file is not valid JSON")); return; }
     const incoming = extractStudents(data)[0];
-    if(!incoming){ toast("Couldn't find your lesson file in there"); return; }
+    if(!incoming){ toast(t("Couldn't find your lesson file in there")); return; }
     studentState.student = normalizeStudent(incoming);
     saveStudentState();
     practice.active = false;
     render();
-    toast('Loaded ' + (incoming.name || 'your file'));
+    toast(t("Loaded {name}", { name: incoming.name || t("your file") }));
   };
   reader.readAsText(file);
   document.getElementById('studentImportFile').value='';
@@ -3066,10 +3279,13 @@ function renderStudentHeader(){
   <div class="topbar no-print">
     <div class="brand">
       <div class="brand-mark">🗣️</div>
-      <div><div class="brand-name">ChatterCheck</div><div class="brand-tag">Your lesson file · stays on this device</div></div>
+      <div><div class="brand-name">ChatterCheck</div><div class="brand-tag">${t("Your lesson file · stays on this device")}</div></div>
     </div>
-    <div style="display:flex;gap:6px;margin-left:auto">
-      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('studentImportFile').click()">${studentState.student?'Import updated file':'Import your file'}</button>
+    <div style="display:flex;gap:6px;margin-left:auto;align-items:center">
+      <select aria-label="${t("Interface language")}" title="${t("Interface language")}" onchange="setUiLang(this.value)" style="padding:5px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:12.5px">
+        ${UI_LANGS.map(([code,name])=>`<option value="${code}" ${uiLang()===code?'selected':''}>${name}</option>`).join('')}
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('studentImportFile').click()">${studentState.student?t("Import updated file"):t("Import your file")}</button>
       <input type="file" id="studentImportFile" accept="application/json" style="display:none" onchange="handleStudentImport(this.files[0])">
       ${themeToggleBtn()}
     </div>
@@ -3080,60 +3296,61 @@ function renderStudentImportPrompt(){
   <div class="stack">
     <div class="card herocard" style="text-align:center;padding:30px 24px">
       <div class="bigicon">👋</div>
-      <h2 style="margin-bottom:6px">Welcome to your lesson space</h2>
-      <p class="help" style="max-width:480px;margin:0 auto">Record lessons, review the corrections your tutor flagged, and practice your vocabulary — all saved right here on this device, never on a server.</p>
+      <h2 style="margin-bottom:6px">${t("Welcome to your lesson space")}</h2>
+      <p class="help" style="max-width:480px;margin:0 auto">${t("Record lessons, review the corrections your tutor flagged, and practice your vocabulary — all saved right here on this device, never on a server.")}</p>
     </div>
     <div class="dashgrid">
       <div class="card dashcard" onclick="practice.active=false;studentTab='record';render()">
         <div class="bigicon" style="font-size:26px;margin-bottom:2px">🎙️</div>
-        <h3 style="font-size:16px">Record today's lesson</h3>
-        <p class="help">No file needed yet — start recording any time and send it to your tutor when you're done.</p>
-        <button class="btn btn-primary btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();practice.active=false;studentTab='record';render()">Go to Record lesson</button>
+        <h3 style="font-size:16px">${t("Record today's lesson")}</h3>
+        <p class="help">${t("No file needed yet — start recording any time and send it to your tutor when you're done.")}</p>
+        <button class="btn btn-primary btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();practice.active=false;studentTab='record';render()">${t("Go to Record lesson")}</button>
       </div>
       <div class="card dashcard" onclick="document.getElementById('studentImportFile').click()">
         <div class="bigicon" style="font-size:26px;margin-bottom:2px">📂</div>
-        <h3 style="font-size:16px">Already have a file from your tutor?</h3>
-        <p class="help">Import it to see your progress, review flagged corrections, and practice your vocabulary with flashcards.</p>
-        <button class="btn btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();document.getElementById('studentImportFile').click()">Import your file</button>
+        <h3 style="font-size:16px">${t("Already have a file from your tutor?")}</h3>
+        <p class="help">${t("Import it to see your progress, review flagged corrections, and practice your vocabulary with flashcards.")}</p>
+        <button class="btn btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();document.getElementById('studentImportFile').click()">${t("Import your file")}</button>
       </div>
       <div class="card dashcard" onclick="practice.active=false;studentTab='library';render()">
         <div class="bigicon" style="font-size:26px;margin-bottom:2px">📚</div>
-        <h3 style="font-size:16px">Want to talk about something specific?</h3>
-        <p class="help">Browse real conversation topics and flag ones you'd like to cover in your next lesson.</p>
-        <button class="btn btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();practice.active=false;studentTab='library';render()">Browse the library</button>
+        <h3 style="font-size:16px">${t("Want to talk about something specific?")}</h3>
+        <p class="help">${t("Browse real conversation topics and flag ones you'd like to cover in your next lesson.")}</p>
+        <button class="btn btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();practice.active=false;studentTab='library';render()">${t("Browse the library")}</button>
       </div>
       <div class="card dashcard" onclick="practice.active=false;studentTab='phrases';render()">
         <div class="bigicon" style="font-size:26px;margin-bottom:2px">💬</div>
-        <h3 style="font-size:16px">Sound more natural</h3>
-        <p class="help">Pick up a genuinely useful everyday phrase — the kind of thing native speakers actually say.</p>
-        <button class="btn btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();practice.active=false;studentTab='phrases';render()">See a useful phrase</button>
+        <h3 style="font-size:16px">${t("Sound more natural")}</h3>
+        <p class="help">${t("Pick up a genuinely useful everyday phrase — the kind of thing native speakers actually say.")}</p>
+        <button class="btn btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();practice.active=false;studentTab='phrases';render()">${t("See a useful phrase")}</button>
       </div>
       <div class="card dashcard" onclick="practice.active=false;studentTab='facts';render()">
         <div class="bigicon" style="font-size:26px;margin-bottom:2px">💡</div>
-        <h3 style="font-size:16px">Just here to kill time?</h3>
-        <p class="help">Read a random fun fact about language while you wait for your next lesson.</p>
-        <button class="btn btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();practice.active=false;studentTab='facts';render()">See a fun fact</button>
+        <h3 style="font-size:16px">${t("Just here to kill time?")}</h3>
+        <p class="help">${t("Read a random fun fact about language while you wait for your next lesson.")}</p>
+        <button class="btn btn-sm" style="align-self:flex-start" onclick="event.stopPropagation();practice.active=false;studentTab='facts';render()">${t("See a fun fact")}</button>
       </div>
     </div>
   </div>`;
 }
 function renderMilestones(st){
+  // Milestone steps are never 1, so the plural key is always the right one.
   const cats = [
-    { icon:'🔥', suffix:'day streak', val: (st.streak&&st.streak.longest)||0, steps:[3,7,14,30,60,100] },
-    { icon:'🏆', suffix:'words mastered', val: srsMasteredCount(st), steps:[10,25,50,100,200] },
-    { icon:'📅', suffix:'sessions', val: st.sessions.length, steps:[5,10,25,50,100] },
+    { icon:'🔥', label:'{n} day streak', val: (st.streak&&st.streak.longest)||0, steps:[3,7,14,30,60,100] },
+    { icon:'🏆', label:'{n} words mastered', val: srsMasteredCount(st), steps:[10,25,50,100,200] },
+    { icon:'📅', label:'{n} sessions', val: st.sessions.length, steps:[5,10,25,50,100] },
   ];
   const chips = cats.map(cat=>{
     const earned = cat.steps.filter(n=>cat.val>=n);
     const next = cat.steps.find(n=>cat.val<n);
     let out = '';
-    if(earned.length) out += `<span class="badgechip earned">${cat.icon} ${earned[earned.length-1]} ${cat.suffix}</span>`;
-    if(next) out += `<span class="badgechip">${cat.icon} ${next} ${cat.suffix} <span class="mini mono">${cat.val}/${next}</span></span>`;
+    if(earned.length) out += `<span class="badgechip earned">${cat.icon} ${t(cat.label,{n:earned[earned.length-1]})}</span>`;
+    if(next) out += `<span class="badgechip">${cat.icon} ${t(cat.label,{n:next})} <span class="mini mono">${cat.val}/${next}</span></span>`;
     return out;
   }).join('');
   if(!chips) return '';
   return `<div class="card">
-    <div class="sectionhead"><h3>Milestones</h3></div>
+    <div class="sectionhead"><h3>${t("Milestones")}</h3></div>
     <div style="display:flex;flex-wrap:wrap;gap:8px">${chips}</div>
   </div>`;
 }
@@ -3144,40 +3361,40 @@ function renderStudentReport(st){
   const groups = {};
   Object.keys(GTYPES).forEach(k=>groups[k]=[]);
   st.glossary.forEach(g=>groups[g.type]?.push(g));
-  const trendBadge = prog.delta===null ? `<span class="mini">First session</span>` :
+  const trendBadge = prog.delta===null ? `<span class="mini">${t("First session")}</span>` :
     prog.delta>0 ? `<span class="deltabadge delta-up">▲ +${prog.delta}%</span>` :
     prog.delta<0 ? `<span class="deltabadge delta-down">▼ ${prog.delta}%</span>` :
-    `<span class="deltabadge delta-flat">steady</span>`;
+    `<span class="deltabadge delta-flat">${t("steady")}</span>`;
   return `
   <div class="stack">
     ${streakAtRisk(st) ? `
     <div class="card" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-color:var(--warn)">
       <span class="streak-flame" style="font-size:22px">🔥</span>
       <div style="flex:1">
-        <div style="font-weight:600">Your ${st.streak.current}-day streak is at risk</div>
-        <div class="mini">Review a word or send today's recording to keep it alive.</div>
+        <div style="font-weight:600">${t("Your {n}-day streak is at risk",{n:st.streak.current})}</div>
+        <div class="mini">${t("Review a word or send today's recording to keep it alive.")}</div>
       </div>
-      <button class="btn btn-sm btn-primary" ${st.glossary.length?'':'disabled'} onclick="startPracticeFor(studentModeStudent())">Practice now</button>
+      <button class="btn btn-sm btn-primary" ${st.glossary.length?'':'disabled'} onclick="startPracticeFor(studentModeStudent())">${t("Practice now")}</button>
     </div>` : ''}
     <div class="spotlight">
       <div class="sectionhead">
         <div style="display:flex;align-items:center;gap:12px">
           <span class="avatarlg" style="background:${colorFor(st.name)}">${esc(initials(st.name))}</span>
           <div>
-            <div class="spotlight-headline" style="font-size:clamp(19px,2.6vw,24px);margin:0">Hi ${esc(st.name)} — here's your progress</div>
-            <div class="spotlight-sub">${esc(st.lang)} &middot; ${esc(st.level)} &middot; ${st.sessions.length} session${st.sessions.length===1?'':'s'}</div>
+            <div class="spotlight-headline" style="font-size:clamp(19px,2.6vw,24px);margin:0">${t("Hi {name} — here's your progress",{name:esc(st.name)})}</div>
+            <div class="spotlight-sub">${esc(st.lang)} &middot; ${esc(st.level)} &middot; ${tp(st.sessions.length,"{n} session","{n} sessions")}</div>
           </div>
         </div>
         <div class="no-print" style="display:flex;flex-wrap:wrap;gap:8px">
-          <button class="btn btn-sm" onclick="window.print()">Save as PDF</button>
-          <button class="btn btn-sm btn-primary" ${st.glossary.length?'':'disabled'} onclick="startPracticeFor(studentModeStudent())">Practice flashcards${st.glossary.length?` (${srsDueCount(st)} due)`:''}</button>
+          <button class="btn btn-sm" onclick="window.print()">${t("Save as PDF")}</button>
+          <button class="btn btn-sm btn-primary" ${st.glossary.length?'':'disabled'} onclick="startPracticeFor(studentModeStudent())">${st.glossary.length ? t("Practice flashcards ({n} due)",{n:srsDueCount(st)}) : t("Practice flashcards")}</button>
         </div>
       </div>
       <div class="spotlight-stats">
-        <div class="spotlight-stat"><div class="num accent">${prog.current===null?'—':prog.current+'%'}</div><div class="lbl">Current average</div></div>
-        <div class="spotlight-stat"><div class="num" style="font-size:20px;padding-top:8px">${trendBadge}</div><div class="lbl">vs your recent average</div></div>
-        <div class="spotlight-stat"><div class="num">${srsMasteredCount(st)}</div><div class="lbl">Words mastered</div></div>
-        <div class="spotlight-stat"><div class="num">${streakIsLive(st)?st.streak.current:0}${streakIsLive(st)&&st.streak.current?' <span class="streak-flame">🔥</span>':''}</div><div class="lbl">Day streak</div></div>
+        <div class="spotlight-stat"><div class="num accent">${prog.current===null?'—':prog.current+'%'}</div><div class="lbl">${t("Current average")}</div></div>
+        <div class="spotlight-stat"><div class="num" style="font-size:20px;padding-top:8px">${trendBadge}</div><div class="lbl">${t("vs your recent average")}</div></div>
+        <div class="spotlight-stat"><div class="num">${srsMasteredCount(st)}</div><div class="lbl">${t("Words mastered")}</div></div>
+        <div class="spotlight-stat"><div class="num">${streakIsLive(st)?st.streak.current:0}${streakIsLive(st)&&st.streak.current?' <span class="streak-flame">🔥</span>':''}</div><div class="lbl">${t("Day streak")}</div></div>
       </div>
       <div class="chart-wrap">${chartSVG(st, 260, true)}</div>
     </div>
@@ -3187,54 +3404,54 @@ function renderStudentReport(st){
     <div class="grid2">
       <div class="card">
         <div class="sectionhead">
-          <h3>Things to keep working on</h3>
-          <button class="linkbtn muted no-print" style="font-size:11.5px" onclick="toggleShowCorrections()">${studentPrefs.showCorrections?'Hide this section':'Show this section'}</button>
+          <h3>${t("Things to keep working on")}</h3>
+          <button class="linkbtn muted no-print" style="font-size:11.5px" onclick="toggleShowCorrections()">${studentPrefs.showCorrections?t("Hide this section"):t("Show this section")}</button>
         </div>
-        ${!studentPrefs.showCorrections ? `<div class="help">Corrections are hidden right now. <button class="linkbtn" onclick="toggleShowCorrections()">Show them</button></div>` : `<div class="mini" style="margin-bottom:8px">${needsAttention.length} flagged</div>
+        ${!studentPrefs.showCorrections ? `<div class="help">${t("Corrections are hidden right now.")} <button class="linkbtn" onclick="toggleShowCorrections()">${t("Show them")}</button></div>` : `<div class="mini" style="margin-bottom:8px">${t("{n} flagged",{n:needsAttention.length})}</div>
         ${needsAttention.length ? `<div class="stack" style="gap:8px">${needsAttention.map(m=>{
           const c = CATS[m.category];
           return `<div class="mistakecard flagged">
-            <div class="row"><span class="pill" style="background:var(${c.t});color:var(${c.v})">${c.label}</span><span class="count">×${m.occurrences.length}</span></div>
+            <div class="row"><span class="pill" style="background:var(${c.t});color:var(${c.v})">${t(c.label)}</span><span class="count">×${m.occurrences.length}</span></div>
             <div class="txt">${esc(m.text)}</div>
             ${m.correction?`<div class="fix">→ ${esc(m.correction)}</div>`:''}
             ${m.explanation?`<div class="mini" style="margin-top:2px">${esc(m.explanation)}</div>`:''}
             ${m.example?`<div class="mini" style="font-style:italic;opacity:.8">"${esc(m.example)}"</div>`:''}
           </div>`;
-        }).join('')}</div>` : `<div class="help">Nothing repeat-flagged — nice work.</div>`}
+        }).join('')}</div>` : `<div class="help">${t("Nothing repeat-flagged — nice work.")}</div>`}
         ${singles.length ? `<div style="margin-top:12px">
-          <button class="btn btn-ghost btn-sm no-print" onclick="showFullLog=!showFullLog;render()">${showFullLog?'Hide':'Show'} ${singles.length} more note${singles.length===1?'':'s'}</button>
+          <button class="btn btn-ghost btn-sm no-print" onclick="showFullLog=!showFullLog;render()">${showFullLog ? tp(singles.length,"Hide {n} more note","Hide {n} more notes") : tp(singles.length,"Show {n} more note","Show {n} more notes")}</button>
           ${showFullLog ? `<div class="quietlist" style="margin-top:8px">${singles.map(m=>`
             <div class="quietrow"><span>${esc(m.text)}</span>${m.correction?`<span class="mini">→ ${esc(m.correction)}</span>`:''}</div>`).join('')}</div>` : ''}
         </div>` : ''}`}
       </div>
 
       <div class="card">
-        <div class="sectionhead"><h3>Recent sessions</h3></div>
+        <div class="sectionhead"><h3>${t("Recent sessions")}</h3></div>
         ${st.sessions.length ? `<div class="stack" style="gap:8px">${st.sessions.slice().reverse().slice(0,6).map(s=>`
           <div class="quietrow" style="align-items:flex-start;flex-direction:column;gap:2px;padding:8px 2px">
             <div style="display:flex;justify-content:space-between;align-items:baseline;width:100%;gap:10px">
               <span style="font-weight:600">${esc(fmtDateFull(s.date))}</span><span class="mono">${s.rating}%</span>
             </div>
             <div class="mini">${s.durationMin}m${s.notes?' · '+esc(s.notes):''}</div>
-          </div>`).join('')}</div>` : `<div class="help">No sessions yet.</div>`}
+          </div>`).join('')}</div>` : `<div class="help">${t("No sessions yet.")}</div>`}
       </div>
     </div>
 
     <div class="card">
-      <div class="sectionhead"><h3>Vocabulary &amp; constructs</h3></div>
+      <div class="sectionhead"><h3>${esc(t("Vocabulary & constructs"))}</h3></div>
       ${st.glossary.length ? Object.entries(GTYPES).map(([k,meta])=>{
         const items = groups[k]; if(!items.length) return '';
         return `<div style="margin-bottom:14px">
-          <div class="eyebrow" style="margin-bottom:8px;color:var(${meta.v})">${meta.label} &middot; ${items.length}</div>
+          <div class="eyebrow" style="margin-bottom:8px;color:var(${meta.v})">${t(meta.label)} &middot; ${items.length}</div>
           <div class="glossgrid">${items.map(g=>`
             <div class="glosscard">
-              <div class="term">${esc(g.term)} <button class="linkbtn no-print" style="font-size:14px;padding:0 2px" title="Hear pronunciation" onclick="speakTerm('${jsAttr(g.term)}','${st.speechLang||guessLangCode(st.lang)}')">🔊</button></div>
+              <div class="term">${esc(g.term)} <button class="linkbtn no-print" style="font-size:14px;padding:0 2px" title="${t("Hear pronunciation")}" onclick="speakTerm('${jsAttr(g.term)}','${st.speechLang||guessLangCode(st.lang)}')">🔊</button></div>
               ${g.meaning?`<div class="meaning">${esc(g.meaning)}</div>`:''}
               ${g.example?`<div class="example">"${esc(g.example)}"</div>`:''}
             </div>`).join('')}
           </div>
         </div>`;
-      }).join('') : `<div class="help">Nothing here yet.</div>`}
+      }).join('') : `<div class="help">${t("Nothing here yet.")}</div>`}
     </div>
   </div>`;
 }
@@ -3248,7 +3465,7 @@ function srecLangCode(){
 }
 function toggleStudentRecording(){
   if(srecActive){ stopStudentRecording(); return; }
-  if(!speechSupported()){ toast('Recording needs Chrome'); return; }
+  if(!speechSupported()){ toast(t("Recording needs Chrome")); return; }
   if(studentRecording.consentConfirmedAt){ startStudentRecording(); return; }
   openStudentRecordingConsent();
 }
@@ -3257,11 +3474,11 @@ function openStudentRecordingConsent(){
   overlay.className = 'overlay';
   overlay.innerHTML = `
     <div class="modal">
-      <h3>Before you record</h3>
-      <p class="help">By starting, you're confirming your tutor knows you're recording this lesson, and that you're okay with your own voice being recorded too. If you're under 18, make sure a parent or guardian is okay with this as well.</p>
+      <h3>${t("Before you record")}</h3>
+      <p class="help">${t("By starting, you're confirming your tutor knows you're recording this lesson, and that you're okay with your own voice being recorded too. If you're under 18, make sure a parent or guardian is okay with this as well.")}</p>
       <div class="modalrow">
-        <button class="btn" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="confirmStudentRecordingConsent()">I understand — start recording</button>
+        <button class="btn" onclick="closeModal()">${t("Cancel")}</button>
+        <button class="btn btn-primary" onclick="confirmStudentRecordingConsent()">${t("I understand — start recording")}</button>
       </div>
     </div>`;
   overlay.id='modalHost';
@@ -3336,7 +3553,7 @@ function launchSRec(){
   };
   srec.onerror = (e) => {
     if(e.error==='not-allowed' || e.error==='service-not-allowed'){
-      toast('Microphone access was blocked — allow it in the browser to record');
+      toast(t("Microphone access was blocked — allow it in the browser to record"));
       srecState='off'; srecActive=false; srec=null; updateSRecUI();
     }
   };
@@ -3364,24 +3581,24 @@ function stopStudentRecording(){
 }
 function updateSRecUI(){
   const btn = document.getElementById('srecToggleBtn');
-  if(btn){ btn.textContent = srecActive ? 'Stop recording' : 'Start recording'; btn.classList.toggle('recbtn', srecActive); btn.classList.toggle('off', !srecActive); }
+  if(btn){ btn.textContent = srecActive ? t("Stop recording") : t("Start recording"); btn.classList.toggle('recbtn', srecActive); btn.classList.toggle('off', !srecActive); }
   const banner = document.getElementById('srecBanner');
   if(banner){
-    if(srecState==='listening') banner.outerHTML = `<div id="srecBanner" class="recbanner live"><span class="dot"></span>Recording — listening</div>`;
-    else if(srecState==='stalled') banner.outerHTML = `<div id="srecBanner" class="recbanner stalled">Recording stopped unexpectedly<button class="btn btn-sm" style="margin-left:auto" onclick="resumeStudentRecording()">Resume</button></div>`;
-    else banner.outerHTML = `<div id="srecBanner" class="recbanner off">Ready when you are</div>`;
+    if(srecState==='listening') banner.outerHTML = `<div id="srecBanner" class="recbanner live"><span class="dot"></span>${t("Recording — listening")}</div>`;
+    else if(srecState==='stalled') banner.outerHTML = `<div id="srecBanner" class="recbanner stalled">${t("Recording stopped unexpectedly")}<button class="btn btn-sm" style="margin-left:auto" onclick="resumeStudentRecording()">${t("Resume")}</button></div>`;
+    else banner.outerHTML = `<div id="srecBanner" class="recbanner off">${t("Ready when you are")}</div>`;
   }
 }
 function discardStudentRecording(){
-  confirmModal('Clear this recording? This cannot be undone.', () => {
+  confirmModal(t("Clear this recording? This cannot be undone."), () => {
     stopStudentRecording();
     studentRecording = { startedAt: null, transcript: [] };
     saveStudentRecording();
     render();
-  }, 'Clear recording');
+  }, t("Clear recording"));
 }
 async function sendStudentRecording(){
-  if(!studentRecording.transcript.length){ toast('Nothing recorded yet'); return; }
+  if(!studentRecording.transcript.length){ toast(t("Nothing recorded yet")); return; }
   const data = JSON.stringify({ kind:'lesson-copilot-recording', recordedAt: studentRecording.startedAt, studentName: studentState.student?.name||'', consentConfirmedAt: studentRecording.consentConfirmedAt||null, transcript: studentRecording.transcript }, null, 2);
   const prefix = studentState.student?.name ? slugify(studentState.student.name)+'-' : '';
   const filename = prefix+'recording-'+new Date(studentRecording.startedAt||Date.now()).toISOString().slice(0,10)+'.json';
@@ -3389,7 +3606,7 @@ async function sendStudentRecording(){
   if(navigator.canShare && navigator.canShare({ files:[file] })){
     try{
       await navigator.share({ files:[file], title:'Lesson recording', text:'Here’s my ChatterCheck lesson recording for you to import.' });
-      toast('Sent!');
+      toast(t("Sent!"));
       return;
     }catch(e){
       if(e && e.name==='AbortError') return;
@@ -3401,59 +3618,59 @@ function renderStudentRecordTab(){
   const hasData = studentRecording.transcript.length>0;
   return `
   <div class="card">
-    <div class="sectionhead"><h3>Record this lesson</h3></div>
+    <div class="sectionhead"><h3>${t("Record this lesson")}</h3></div>
     ${speechSupported() ? `
-    <p class="help">Click start at the beginning of your lesson and just talk normally — there's nothing else to do. Your tutor will use this afterward; it isn't sent anywhere automatically.</p>
-    ${/Android/i.test(navigator.userAgent) ? `<p class="mini" style="margin-bottom:10px;color:var(--warn)">On Android phones, you may hear a short beep every few seconds while recording. That's your phone's own sound each time the browser restarts listening — the app can't switch it off. Recording still works. To avoid the beeps, record on a laptop or computer instead.</p>` : ''}
-    <p class="mini" style="margin-bottom:10px">If recording won't start while you're on your call, your browser is probably keeping the microphone for the call itself. Try opening this page in a different browser than the one you're using for the call (or on a second device) — that usually fixes it.</p>
+    <p class="help">${t("Click start at the beginning of your lesson and just talk normally — there's nothing else to do. Your tutor will use this afterward; it isn't sent anywhere automatically.")}</p>
+    ${IS_ANDROID ? `<p class="mini" style="margin-bottom:10px;color:var(--warn)">${t("On Android phones, you may hear a short beep every few seconds while recording. That's your phone's own sound each time the browser restarts listening — the app can't switch it off. Recording still works. To avoid the beeps, record on a laptop or computer instead.")}</p>` : ''}
+    <p class="mini" style="margin-bottom:10px">${t("If recording won't start while you're on your call, your browser is probably keeping the microphone for the call itself. Try opening this page in a different browser than the one you're using for the call (or on a second device) — that usually fixes it.")}</p>
     <div id="srecBanner" class="recbanner ${srecState==='listening'?'live':srecState==='stalled'?'stalled':'off'}">
-      ${srecState==='listening' ? `<span class="dot"></span>Recording — listening` : srecState==='stalled' ? `Recording stopped unexpectedly<button class="btn btn-sm" style="margin-left:auto" onclick="resumeStudentRecording()">Resume</button>` : `Ready when you are`}
+      ${srecState==='listening' ? `<span class="dot"></span>${t("Recording — listening")}` : srecState==='stalled' ? `${t("Recording stopped unexpectedly")}<button class="btn btn-sm" style="margin-left:auto" onclick="resumeStudentRecording()">${t("Resume")}</button>` : t("Ready when you are")}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-      <button id="srecToggleBtn" class="btn ${srecActive?'recbtn':'off'}" onclick="toggleStudentRecording()">${srecActive?'Stop recording':'Start recording'}</button>
-      ${hasData && srecActive ? `<button class="btn btn-ghost" onclick="discardStudentRecording()">Clear</button>` : ''}
+      <button id="srecToggleBtn" class="btn ${srecActive?'recbtn':'off'}" onclick="toggleStudentRecording()">${srecActive?t("Stop recording"):t("Start recording")}</button>
+      ${hasData && srecActive ? `<button class="btn btn-ghost" onclick="discardStudentRecording()">${t("Clear")}</button>` : ''}
     </div>
     ${!srecActive && hasData ? `
     <div class="card" style="background:var(--accent-tint);border-color:var(--accent-strong);text-align:center;padding:18px 16px;margin-bottom:12px">
-      <div style="font-weight:700;margin-bottom:4px">Recording stopped — ${studentRecording.transcript.length} line${studentRecording.transcript.length===1?'':'s'} captured</div>
-      <p class="mini" style="margin-bottom:12px">Send it to your tutor now, before you forget.</p>
+      <div style="font-weight:700;margin-bottom:4px">${tp(studentRecording.transcript.length,"Recording stopped — {n} line captured","Recording stopped — {n} lines captured")}</div>
+      <p class="mini" style="margin-bottom:12px">${t("Send it to your tutor now, before you forget.")}</p>
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-        <button class="btn btn-primary" style="padding:10px 22px;font-size:15px" onclick="sendStudentRecording()">Send to your tutor</button>
-        <button class="btn btn-ghost" onclick="discardStudentRecording()">Clear</button>
+        <button class="btn btn-primary" style="padding:10px 22px;font-size:15px" onclick="sendStudentRecording()">${t("Send to your tutor")}</button>
+        <button class="btn btn-ghost" onclick="discardStudentRecording()">${t("Clear")}</button>
       </div>
     </div>` : ''}
-    ${studentRecording.consentConfirmedAt ? `<div class="mini" style="margin-bottom:6px">✓ Recording consent confirmed</div>` : ''}
+    ${studentRecording.consentConfirmedAt ? `<div class="mini" style="margin-bottom:6px">${t("✓ Recording consent confirmed")}</div>` : ''}
     <div id="srecInterim" class="mini" style="min-height:16px;font-style:italic"></div>
     <div id="srecLog" class="translog">${studentRecording.transcript.map(l=>`<div class="transline">${esc(l.text)}</div>`).join('')}</div>
     ${(!hasData && !srecActive) ? `
     <div class="statrow" style="margin-top:16px">
-      <div class="stat"><div class="num">1</div><div class="lbl">Press start</div></div>
-      <div class="stat"><div class="num">2</div><div class="lbl">Talk normally</div></div>
-      <div class="stat"><div class="num">3</div><div class="lbl">Send to your tutor</div></div>
+      <div class="stat"><div class="num">1</div><div class="lbl">${t("Press start")}</div></div>
+      <div class="stat"><div class="num">2</div><div class="lbl">${t("Talk normally")}</div></div>
+      <div class="stat"><div class="num">3</div><div class="lbl">${t("Send to your tutor")}</div></div>
     </div>` : ''}
-    ` : `<p class="help">Recording needs Chrome — everything else on this page still works.</p>`}
+    ` : `<p class="help">${t("Recording needs Chrome — everything else on this page still works.")}</p>`}
   </div>`;
 }
 
 function renderStudentFunFacts(){
   return `
   <div class="card" style="text-align:center;padding:34px 24px">
-    <div class="eyebrow">Fun fact</div>
+    <div class="eyebrow">${t("Fun fact")}</div>
     <div class="factcard-content" style="font-size:19px;line-height:1.5;max-width:520px;margin:14px auto 20px">${esc(FUN_FACTS[funFactIdx])}</div>
-    <button class="btn btn-primary" onclick="pickFunFact();render()">Show me another</button>
+    <button class="btn btn-primary" onclick="pickFunFact();render()">${t("Show me another")}</button>
   </div>`;
 }
 function renderUsefulPhrase(){
   const p = USEFUL_PHRASES[phraseIdx];
   return `
   <div class="card" style="text-align:center;padding:34px 24px">
-    <div class="eyebrow">Useful phrase</div>
+    <div class="eyebrow">${t("Useful phrase")}</div>
     <div class="factcard-content">
       <div style="font-size:23px;font-weight:800;margin:14px auto 8px">${esc(p.term)}</div>
       <div style="font-size:15px;color:var(--text-2);max-width:480px;margin:0 auto 10px">${esc(p.meaning)}</div>
       <div style="font-size:14px;font-style:italic;color:var(--text-3);max-width:480px;margin:0 auto 20px">${esc(p.example)}</div>
     </div>
-    <button class="btn btn-primary" onclick="pickUsefulPhrase();render()">Show me another</button>
+    <button class="btn btn-primary" onclick="pickUsefulPhrase();render()">${t("Show me another")}</button>
   </div>`;
 }
 function renderLibraryTopicCard(t, isRequested){
@@ -3465,20 +3682,20 @@ function renderLibraryTopicCard(t, isRequested){
         <div style="font-weight:700;font-size:15px">${esc(t.title)}</div>
         ${!expanded ? `<div class="mini" style="margin-top:2px">${esc(t.intro)}</div>` : ''}
       </div>
-      <button class="btn btn-ghost btn-sm no-print" style="flex:0 0 auto" onclick="event.stopPropagation();toggleTopicRequest('${t.id}')">${isRequested?'★ Requested':'☆ Request this'}</button>
+      <button class="btn btn-ghost btn-sm no-print" style="flex:0 0 auto" onclick="event.stopPropagation();toggleTopicRequest('${t.id}')">${isRequested?tr("★ Requested"):tr("☆ Request this")}</button>
     </div>
     ${expanded ? `
     <div class="factcard-content" style="margin-top:14px">
       <p class="help" style="margin-bottom:16px">${esc(t.intro)}</p>
-      <div class="tier-label-lib">Core vocabulary — everyone</div>
+      <div class="tier-label-lib">${tr("Core vocabulary — everyone")}</div>
       <div class="glossgrid" style="margin-bottom:16px">${t.coreVocab.map(v=>`<div class="glosscard"><div class="term">${esc(v.term)}</div><div class="meaning">${esc(v.def)}</div></div>`).join('')}</div>
-      <div class="tier-label-lib deep">Go deeper</div>
+      <div class="tier-label-lib deep">${tr("Go deeper")}</div>
       <div class="glossgrid deep" style="margin-bottom:16px">${t.deepVocab.map(v=>`<div class="glosscard"><div class="term">${esc(v.term)}</div><div class="meaning">${esc(v.def)}</div></div>`).join('')}</div>
-      <div class="eyebrow" style="margin-bottom:8px">Model exchange</div>
+      <div class="eyebrow" style="margin-bottom:8px">${tr("Model exchange")}</div>
       <div class="translog" style="margin-bottom:16px">${t.dialogue.map(d=>`<div class="transline"><span class="txt"><strong>${esc(d.who)}:</strong> ${esc(d.text)}</span></div>`).join('')}</div>
-      <div class="tier-label-lib">Warm-up questions — everyone</div>
+      <div class="tier-label-lib">${tr("Warm-up questions — everyone")}</div>
       <ul class="lib-questions">${t.coreQuestions.map(q=>`<li>${esc(q)}</li>`).join('')}</ul>
-      <div class="tier-label-lib deep" style="margin-top:14px">Go deeper</div>
+      <div class="tier-label-lib deep" style="margin-top:14px">${tr("Go deeper")}</div>
       <ul class="lib-questions deep">${t.deepQuestions.map(q=>`<li>${esc(q)}</li>`).join('')}</ul>
     </div>` : ''}
   </div>`;
@@ -3489,27 +3706,28 @@ function renderLibrary(){
   return `
   <div class="stack">
     <div class="card" style="text-align:center;padding:24px">
-      <div class="eyebrow">Lesson library</div>
-      <h2 style="margin:8px 0 6px;font-size:19px">Pick a topic to explore</h2>
-      <p class="help" style="max-width:480px;margin:0 auto">Real conversation topics — vocabulary, an example exchange, and questions to think about. Every topic works at any level: start with the core basics, or push into "go deeper" for more of a challenge.</p>
+      <div class="eyebrow">${tr("Lesson library")}</div>
+      <h2 style="margin:8px 0 6px;font-size:19px">${tr("Pick a topic to explore")}</h2>
+      <p class="help" style="max-width:480px;margin:0 auto">${esc(tr("Real conversation topics — vocabulary, an example exchange, and questions to think about. Every topic works at any level: start with the core basics, or push into \"go deeper\" for more of a challenge."))}</p>
     </div>
     ${requested.length ? `
     <div class="card no-print">
-      <div class="sectionhead"><h3>Your requested topics</h3><span class="mini mono">${requested.length}</span></div>
+      <div class="sectionhead"><h3>${tr("Your requested topics")}</h3><span class="mini mono">${requested.length}</span></div>
       <div class="watchchips" style="margin-bottom:10px">${requested.map(id=>{
         const t = LESSON_LIBRARY.find(x=>x.id===id); if(!t) return '';
         return `<span class="watchchip">${esc(t.title)}<button class="xbtn" style="margin-left:0" onclick="toggleTopicRequest('${jsAttr(id)}')">×</button></span>`;
       }).join('')}</div>
-      <button class="btn btn-primary btn-sm" onclick="copyTopicRequests()">Copy message for your tutor</button>
-      <p class="mini" style="margin-top:8px">There's no automatic sync — this copies a short message you can paste to your tutor yourself.</p>
+      <button class="btn btn-primary btn-sm" onclick="copyTopicRequests()">${tr("Copy message for your tutor")}</button>
+      <p class="mini" style="margin-top:8px">${tr("There's no automatic sync — this copies a short message you can paste to your tutor yourself.")}</p>
     </div>` : ''}
     ${groups.map(g=>`
-      <div class="eyebrow" style="margin:10px 0 2px">${esc(g.category)}</div>
+      <div class="eyebrow" style="margin:10px 0 2px">${esc(tr(g.category))}</div>
       <div class="stack" style="gap:10px">${g.topics.map(t=>renderLibraryTopicCard(t, requested.includes(t.id))).join('')}</div>
     `).join('')}
   </div>`;
 }
 function renderStudentApp(){
+  document.documentElement.lang = uiLang();
   const st = studentState.student;
   const body = practice.active ? renderPractice(st) :
     studentTab==='record' ? renderStudentRecordTab() :
@@ -3520,11 +3738,11 @@ function renderStudentApp(){
   document.getElementById('app').innerHTML = renderStudentHeader() + `
     <div class="shell" style="padding-top:0">
       <div class="tabs no-print">
-        <button class="tab ${studentTab==='progress'?'active':''}" onclick="practice.active=false;studentTab='progress';render()">My progress</button>
-        <button class="tab ${studentTab==='record'?'active':''}" onclick="practice.active=false;studentTab='record';render()">Record lesson ${srecActive?'<span class=\"livepip\"></span>':''}</button>
-        <button class="tab ${studentTab==='library'?'active':''}" onclick="practice.active=false;studentTab='library';render()">Lesson library</button>
-        <button class="tab ${studentTab==='phrases'?'active':''}" onclick="practice.active=false;studentTab='phrases';render()">Useful phrases</button>
-        <button class="tab ${studentTab==='facts'?'active':''}" onclick="practice.active=false;studentTab='facts';render()">Fun facts</button>
+        <button class="tab ${studentTab==='progress'?'active':''}" onclick="practice.active=false;studentTab='progress';render()">${t("My progress")}</button>
+        <button class="tab ${studentTab==='record'?'active':''}" onclick="practice.active=false;studentTab='record';render()">${t("Record lesson")} ${srecActive?'<span class=\"livepip\"></span>':''}</button>
+        <button class="tab ${studentTab==='library'?'active':''}" onclick="practice.active=false;studentTab='library';render()">${t("Lesson library")}</button>
+        <button class="tab ${studentTab==='phrases'?'active':''}" onclick="practice.active=false;studentTab='phrases';render()">${t("Useful phrases")}</button>
+        <button class="tab ${studentTab==='facts'?'active':''}" onclick="practice.active=false;studentTab='facts';render()">${t("Fun facts")}</button>
       </div>
       <div class="tabfade">${body}</div>
     </div>`;
