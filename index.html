@@ -1131,6 +1131,10 @@ function transcriptFor(st, sessionId){
 /* ---------- recording & heuristic tagging ---------- */
 let recognizer = null, recActive = false, recState = 'off', recFailStreak = 0, recRestartTimer = null, recStartedAt = 0;
 const COALESCE_WINDOW_MS = 2500; // merge speech-recognition fragments finalized this close together into one line
+// Chrome on Android doesn't honour continuous recognition properly — it resends
+// already-finalized results — so there we run short single-utterance sessions
+// and restart between them instead.
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
 // Android Chrome's recogniser re-delivers text it already finalized — the same
 // phrase again, or the same phrase with more words on the end — especially
 // across its frequent automatic restarts. Appending blindly produced lines
@@ -1224,7 +1228,9 @@ function startRecording(){
 function launchRecognizer(st){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   recognizer = new SR();
-  recognizer.continuous = true;
+  recognizer.handledFinals = 0;
+  recognizer.gotResult = false;
+  recognizer.continuous = !IS_ANDROID;
   recognizer.interimResults = true;
   recognizer.lang = st.speechLang || guessLangCode(st.lang);
   recognizer.onresult = handleRecResult;
@@ -1240,7 +1246,10 @@ function launchRecognizer(st){
   recognizer.onend = () => {
     if(!recActive) return;
     const livedFor = Date.now() - recStartedAt;
-    recFailStreak = livedFor < 1500 ? recFailStreak + 1 : 0;
+    const ended = recognizer;
+    // A short session that produced text is a normal single-utterance
+    // session (how Android runs), not a failure worth counting towards "stalled".
+    recFailStreak = (livedFor < 1500 && !(ended && ended.gotResult)) ? recFailStreak + 1 : 0;
     if(recFailStreak >= 4){
       recState = 'stalled'; recActive = false;
       updateRecUI();
@@ -1482,11 +1491,20 @@ function handleRecResult(e){
   const live = state.liveSession; if(!live) return;
   const st = state.students.find(s=>s.id===live.studentId); if(!st) return;
   recFailStreak = 0;
+  const rec = recognizer;
+  if(rec) rec.gotResult = true;
   let interim = '';
-  for(let i=e.resultIndex;i<e.results.length;i++){
+  // Walk every result and skip finals already handled by this session, rather
+  // than trusting e.resultIndex: Android Chrome resends earlier finals with a
+  // resultIndex that doesn't advance past them, so they were appended again.
+  for(let i=0;i<e.results.length;i++){
     const res = e.results[i];
     const text = res[0].transcript.trim();
-    if(res.isFinal){ if(text) appendOrPushLine(st, live, text); }
+    if(res.isFinal){
+      if(rec && i < rec.handledFinals) continue;
+      if(rec) rec.handledFinals = i + 1;
+      if(text) appendOrPushLine(st, live, text);
+    }
     else interim += text;
   }
   if(activeStudent()?.id !== st.id) return;
@@ -3265,17 +3283,25 @@ function startStudentRecording(){
 }
 function launchSRec(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  srec = new SR();
-  srec.continuous = true;
-  srec.interimResults = true;
-  srec.lang = srecLangCode();
-  srec.onresult = (e) => {
+  const rec = new SR();
+  srec = rec;
+  rec.handledFinals = 0;
+  rec.gotResult = false;
+  rec.continuous = !IS_ANDROID;
+  rec.interimResults = true;
+  rec.lang = srecLangCode();
+  rec.onresult = (e) => {
     srecFailStreak = 0;
+    rec.gotResult = true;
     let interim = '';
-    for(let i=e.resultIndex;i<e.results.length;i++){
+    // See handleRecResult: skip finals this session already handled instead
+    // of trusting e.resultIndex, which Android Chrome doesn't advance reliably.
+    for(let i=0;i<e.results.length;i++){
       const res = e.results[i];
       const text = res[0].transcript.trim();
       if(res.isFinal){
+        if(i < rec.handledFinals) continue;
+        rec.handledFinals = i + 1;
         if(text){
           const now = Date.now();
           const last = studentRecording.transcript[studentRecording.transcript.length-1];
@@ -3318,7 +3344,7 @@ function launchSRec(){
   srec.onend = () => {
     if(!srecActive) return;
     const livedFor = Date.now() - srecStartedAt;
-    srecFailStreak = livedFor < 1500 ? srecFailStreak + 1 : 0;
+    srecFailStreak = (livedFor < 1500 && !rec.gotResult) ? srecFailStreak + 1 : 0;
     if(srecFailStreak >= 4){ srecState = 'stalled'; srecActive = false; updateSRecUI(); return; }
     srecRestartTimer = setTimeout(()=>{ if(srecActive) launchSRec(); }, 350);
   };
