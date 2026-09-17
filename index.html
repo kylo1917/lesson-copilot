@@ -2566,6 +2566,68 @@ function resetPronRecording(){
   if(pronBlobUrl){ URL.revokeObjectURL(pronBlobUrl); pronBlobUrl = null; }
   pronRecorder = null; pronChunks = []; pronBlob = null; pronRecording = false;
   pronScore = null; pronScoring = false;
+  stopPronCheck(); pronCheck = null;
+}
+
+/* Free intelligibility check: uses the browser's own speech recognition, so
+   no account, key or server is involved. It can't grade individual sounds
+   the way a paid scorer can — it answers "did the recogniser understand each
+   word?", which is a reasonable proxy for "would a listener understand you?". */
+let pronCheck = null; // null | {listening:true} | {heard, words:[{word, ok}], allOk}
+let pronCheckRec = null, pronCheckTimer = null;
+function pronWords(s){
+  return norm(s).replace(/[’']/g,'').replace(/[^\p{L}\p{N}\s-]/gu,' ').split(/[\s-]+/).filter(Boolean);
+}
+function stopPronCheck(){
+  clearTimeout(pronCheckTimer);
+  if(pronCheckRec){ try{ pronCheckRec.abort(); }catch(e){} pronCheckRec = null; }
+}
+function startPronCheck(term, langCode){
+  if(pronCheck && pronCheck.listening) return;
+  if(!speechSupported()){ toast('Checking pronunciation needs speech recognition, which this browser doesn\'t support'); return; }
+  const target = pronWords(term);
+  if(!target.length) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const rec = new SR();
+  rec.lang = langCode || 'en-US';
+  rec.continuous = false;
+  rec.interimResults = false;
+  rec.maxAlternatives = 5;
+  let done = false;
+  rec.onresult = (e) => {
+    done = true;
+    // The recogniser offers several guesses; judge the student by whichever
+    // guess matched the most target words, so an unlucky top guess doesn't
+    // mark a correctly-said word as wrong.
+    const alts = Array.from(e.results[0] || []).map(a => a.transcript);
+    let best = { heard: alts[0] || '', hits: -1, words: [] };
+    alts.forEach(t => {
+      const heardSet = new Set(pronWords(t));
+      const words = target.map(w => ({ word: w, ok: heardSet.has(w) }));
+      const hits = words.filter(w => w.ok).length;
+      if(hits > best.hits) best = { heard: t, hits, words };
+    });
+    pronCheck = { heard: best.heard, words: best.words, allOk: best.hits === target.length };
+    render();
+  };
+  rec.onerror = (e) => {
+    done = true;
+    pronCheck = null;
+    if(e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Microphone access was blocked — allow it to check your pronunciation');
+    else if(e.error === 'no-speech') toast("Didn't hear anything — press Check it and say the word");
+    else if(e.error !== 'aborted') toast('Could not check that — try again');
+    render();
+  };
+  rec.onend = () => {
+    clearTimeout(pronCheckTimer);
+    pronCheckRec = null;
+    if(!done){ pronCheck = null; toast("Didn't catch that — try again a little louder"); render(); }
+  };
+  pronCheckRec = rec;
+  pronCheck = { listening: true };
+  pronCheckTimer = setTimeout(() => { try{ rec.stop(); }catch(e){} }, 7000);
+  try{ rec.start(); }catch(e){ pronCheck = null; pronCheckRec = null; toast('Could not start listening — try again'); }
+  render();
 }
 async function togglePronRecording(){
   if(pronRecording){ try{ pronRecorder.stop(); }catch(e){} return; }
@@ -2741,13 +2803,24 @@ function renderPractice(st){
           </div>
         `}
       </div>
-      ${practice.revealed && micRecordingSupported() ? `
+      ${practice.revealed && (micRecordingSupported() || speechSupported()) ? `
       <div class="pronbox">
         <div class="eyebrow">Practice saying it</div>
+        ${speechSupported() ? `
+        <div class="pronrow">
+          <button class="btn btn-sm ${pronCheck&&pronCheck.listening?'recbtn':'btn-primary'}" ${pronCheck&&pronCheck.listening?'disabled':''} onclick="startPronCheck('${jsAttr(g.term)}','${esc(st.speechLang||guessLangCode(st.lang))}')">${pronCheck&&pronCheck.listening?'Listening… say it now':'🗣️ Check it'}</button>
+        </div>
+        ${pronCheck && !pronCheck.listening ? `
+        <div style="width:100%;text-align:center">
+          <div style="font-weight:700;color:${pronCheck.allOk?'var(--good)':'var(--warn)'}">${pronCheck.allOk ? 'Understood clearly ✓' : 'Not quite — some of it wasn\'t understood'}</div>
+          ${pronCheck.words.length>1 || !pronCheck.allOk ? `<div class="pronrow" style="justify-content:center;flex-wrap:wrap;margin-top:6px">${pronCheck.words.map(w=>`<span class="mini" style="padding:2px 8px;border-radius:99px;background:var(--surface);color:${w.ok?'var(--good)':'var(--bad)'}">${w.ok?'✓':'✗'} ${esc(w.word)}</span>`).join('')}</div>` : ''}
+          ${!pronCheck.allOk && pronCheck.heard ? `<div class="mini" style="margin-top:6px">Heard: "${esc(pronCheck.heard)}"</div>` : ''}
+        </div>` : ''}` : ''}
+        ${micRecordingSupported() ? `
         <div class="pronrow">
           <button class="btn btn-sm ${pronRecording?'recbtn':''}" onclick="togglePronRecording()">${pronRecording?'⏹ Stop':'🎙️ Record yourself'}</button>
           ${pronRecording?'<span class="recdotsm"></span>':''}
-          ${pronBlobUrl?`<button class="btn btn-sm btn-primary" onclick="playPronRecording()">▶ Play yours</button>`:''}
+          ${pronBlobUrl?`<button class="btn btn-sm" onclick="playPronRecording()">▶ Play yours</button>`:''}
           ${(pronBlob && pronScoringAvailable) ? `<button class="btn btn-sm" ${pronScoring?'disabled':''} onclick="checkPronunciation('${jsAttr(g.term)}','${esc(st.speechLang||guessLangCode(st.lang))}')">${pronScoring?'Checking…':'Score it'}</button>` : ''}
         </div>
         ${pronScore ? `
@@ -2756,8 +2829,8 @@ function renderPractice(st){
           <div class="mini">accuracy ${pronScore.accuracy} · fluency ${pronScore.fluency}</div>
           ${pronScore.words.length>1 ? `<div class="pronrow" style="justify-content:center;flex-wrap:wrap;margin-top:6px">${pronScore.words.map(w=>`<span class="mini" style="padding:2px 7px;border-radius:99px;background:var(--surface);color:${pronScoreColour(w.score)}">${esc(w.word)} ${w.score}</span>`).join('')}</div>` : ''}
           ${pronScore.heard && norm(pronScore.heard).replace(/[.!?,]/g,'') !== norm(g.term) ? `<div class="mini" style="margin-top:6px">Heard: "${esc(pronScore.heard)}"</div>` : ''}
-        </div>` : ''}
-        <div class="mini">${pronScoringAvailable ? 'Nothing is stored. "Score it" sends the clip for scoring, then discards it.' : 'Nothing is saved — this is just for you, right now.'}</div>
+        </div>` : ''}` : ''}
+        <div class="mini">Nothing is saved.${speechSupported() ? ' "Check it" uses your browser\'s built-in speech recognition, the same as lesson recording.' : ''}${pronScoringAvailable ? ' "Score it" sends your recording for scoring, then discards it.' : ''}</div>
       </div>` : ''}
       ${practice.revealed ? `
       <div class="flashctrl">
